@@ -1,0 +1,19 @@
+build/
+test-output/
+dist/
+dist-v*/
+RPA-Designer-v*-Windows-x64/
+RPA-Designer-v*-Windows-x64.zip
+Primer Designer.zip
+Primer Designer/
+*.pdb
+*.dll
+*.log
+
+# Local research, generated reports, and machine-specific notes
+tmp/
+output/
+docs/Codex连接修复说明.md
+
+# Release assets are distributed separately from source
+Primer Designer.zip.sha256.txt

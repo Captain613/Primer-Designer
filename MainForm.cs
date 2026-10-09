@@ -39,7 +39,7 @@ namespace RpaDesigner
             // explicit geometry scale after the complete tree exists; automatic
             // scaling during programmatic construction can miss later children.
             AutoScaleMode = AutoScaleMode.None;
-            Text = "RPA / LAMP 引物设计助手 · v0.19";
+            Text = "RPA / LAMP 引物设计助手 · v" + AppVersion.Display;
             Font = new Font("Microsoft YaHei UI", 10F);
             BackColor = Color.FromArgb(244,247,249);
             ForeColor = ink;
@@ -58,7 +58,7 @@ namespace RpaDesigner
             var title = new Label {Name="appTitle",Text="RPA / LAMP  引物设计助手",AutoSize=true,Dock=DockStyle.Fill,Font=new Font(Font.FontFamily,18,FontStyle.Bold),ForeColor=ink};
             header.Controls.Add(title,0,0);
             header.Controls.Add(new Label {Text="粘贴序列 → 设置扩增范围 → 比较候选引物",AutoSize=true,Dock=DockStyle.Fill,Font=new Font(Font.FontFamily,9F),ForeColor=Color.FromArgb(90,106,120),TextAlign=ContentAlignment.MiddleLeft,Margin=new Padding(3,4,3,0)},0,1);
-            header.Controls.Add(new Label {Name="versionLabel",Text="本地设计  /  v0.19",AutoSize=true,Dock=DockStyle.Fill,ForeColor=teal,TextAlign=ContentAlignment.MiddleRight,Margin=new Padding(14,0,3,0)},1,0);
+            header.Controls.Add(new Label {Name="versionLabel",Text="本地设计  /  v"+AppVersion.Display,AutoSize=true,Dock=DockStyle.Fill,ForeColor=teal,TextAlign=ContentAlignment.MiddleRight,Margin=new Padding(14,0,3,0)},1,0);
             shell.Controls.Add(header,0,0);
             tabs = new TabControl {Dock=DockStyle.Fill,Padding=new Point(18,7)};
             shell.Controls.Add(tabs,0,1);
@@ -148,7 +148,7 @@ namespace RpaDesigner
             help.Text="RPA SNP / mLAMP 序列颜色（v0.17）\r\n\r\n红色为 SNP 碱基，蓝色为人为错配碱基。引物卡片、单条及整组富文本复制、HTML 报告均保留颜色；无人工错配方案不显示蓝色。RPA 两种等位反应产物中由引物引入的对应碱基也标蓝；对照产物和原始模板不标蓝。TXT / CSV / FASTA 不保存颜色。\r\n\r\n"+help.Text;
             help.Text="筛选参数无限制（v0.17）\r\n\r\n勾选某个数字旁的“无限制”，即可关闭该项筛选；取消勾选后恢复原数值。上下限可分别选择。RPA 的偏好产物长度选择无限制时，不再按产物长度偏好评分。候选数量保持现有设置。恢复默认参数会取消无限制。\r\n无限制不取消模板边界、LAMP 六区顺序及间距、结构筛选或方法构型。放开长度后程序可能采样搜索，并在结果中注明；不保证穷举所有组合。靶区坐标继续通过“包围指定靶区”开关控制，PA 尾部长度和 SNP 策略继续按所选方法设置。\r\n\r\n"+help.Text;
             help.Text="可选 NCBI 在线 BLAST（v0.17）\r\n\r\n完成设计并选中一组候选后，点击“BLAST 特异性…”或打开第 04 页。默认关闭；勾选启用、填写联系邮箱、选择数据库后，提交前会列出实际上传的匿名 FASTA，须确认才发送。仅上传当前候选的引物/结合区段，不上传完整模板或原始 FASTA 标题。\r\n默认检索 RefSeq 参考基因组全部物种。预期登录号仅作本地标注，不限制搜索；同一染色体仍需核对具体坐标。覆盖率、一致率与组合跨度是本地解释阈值。LAMP FIP/BIP 分区比对，PA-LAMP 查询切后有效 DNA，不评估 RNase H2 或 C3。\r\n结果包含单条命中和位置关系相容的候选组合，不能作为特异性通过证明。失败、超时、缺失查询及无命中分别提示。可导出完整 TXT、命中 CSV 和原始 XML；这些结果与原设计报告分开。取消只停止本地等待，不能撤回已提交数据。\r\n\r\n"+help.Text;
-            help.Text="默认参数与区段 Tm\r\n\r\nLAMP 当前默认是较宽的候选搜索范围：各结合片段 18–27 nt、GC 35–70%；F3 / B3 / F2 / B2 各为 55–65 °C，F1c / B1c / LF / LB 各为 60–70 °C；F2..B2 跨度 110–190 bp、F3..B3 跨度 120–300 bp（均含两端）。各区段 Tm 可独立修改；排序仍偏好前四区段接近 60 °C、后四区段接近 65 °C。\r\nPrimerExplorer V5 的较窄参考目标为前四区段 59–61 °C、后四区段 64–66 °C、GC 40–65% 和 F2..B2 跨度 120–160 bp。由于 Tm 计算模型和位点序列的差异，把这些目标全部当成硬性筛选边界容易漏掉可供实验筛选的候选。\r\n参考计算条件：Na⁺ 50 mM、Mg²⁺ 4 mM、寡核苷酸 100 nM。Mg²⁺ 按网站公式换算等效 Na⁺；程序保留 SantaLucia 1998 最近邻参数及熵盐校正，与 PrimerExplorer 的公式不同。这些是计算参考条件，不是建议实验配方。\r\nRPA：30–35 nt、GC 30–70%、产物 100–200 bp，保留符合 TwistDx 指南的默认值；Tm 仅供参考，不作为 RPA 硬筛选。\r\n官方来源：PrimerExplorer V5 设计手册正文第 1–3 页 https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_1.pdf ；Tm 附录 https://primerexplorer.jp/e/v3_manual/03.html ；TwistDx / Abbott 设计手册 https://www.globalpointofcare.abbott/us/en/lp/twistdx/support.html 。\r\n\r\n"+help.Text;
+            help.Text="默认参数与区段 Tm\r\n\r\nLAMP 当前默认是较宽的候选搜索范围：各结合片段 17–30 nt、GC 30–75%；F3 / B3 / F2 / B2 各为 52–68 °C，F1c / B1c / LF / LB 各为 58–72 °C；F2..B2 跨度 100–220 bp、F3..B3 跨度 110–350 bp（均含两端）。各区段 Tm 可独立修改；默认排序目标为前四区段 60 °C、后四区段 65 °C。修改范围后按有效范围中点排序，任意一端无限制时回退到 60/65 °C。\r\nPrimerExplorer V5 的较窄参考目标为前四区段 59–61 °C、后四区段 64–66 °C、GC 40–65% 和 F2..B2 跨度 120–160 bp。由于 Tm 计算模型和位点序列的差异，把这些目标全部当成硬性筛选边界容易漏掉可供实验筛选的候选。\r\n参考计算条件：Na⁺ 50 mM、Mg²⁺ 4 mM、寡核苷酸 100 nM。Mg²⁺ 按网站公式换算等效 Na⁺；程序保留 SantaLucia 1998 最近邻参数及熵盐校正，与 PrimerExplorer 的公式不同。这些是计算参考条件，不是建议实验配方。\r\nRPA：30–35 nt、GC 30–70%、产物 100–200 bp，保留符合 TwistDx 指南的默认值；Tm 仅供参考，不作为 RPA 硬筛选。\r\n官方来源：PrimerExplorer V5 设计手册正文第 1–3 页 https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_1.pdf ；Tm 附录 https://primerexplorer.jp/e/v3_manual/03.html ；TwistDx / Abbott 设计手册 https://www.globalpointofcare.abbott/us/en/lp/twistdx/support.html 。\r\n\r\n"+help.Text;
             root.Controls.Add(help,0,0);
             var link = new LinkLabel {Text="打开官方 TwistAmp 引物设计手册（联网）",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft};
             link.LinkClicked+=delegate {try {System.Diagnostics.Process.Start(ReportWriter.ManualUrl);}catch(Exception ex){MessageBox.Show(this,ex.Message,"无法打开链接");}};root.Controls.Add(link,0,1);

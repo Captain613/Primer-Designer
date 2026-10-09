@@ -1,16 +1,18 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace RpaDesigner
 {
-    // Deterministic artificial DNA verifies software contracts only. These
-    // checks cannot predict amplification timing or allele discrimination.
+    // Synthetic DNA, published TP53 and a user-supplied CYP2C9 fixture verify software contracts.
+    // These checks cannot predict amplification timing or allele discrimination.
     public static class MLampSelfTests
     {
         public static int Run(string reportPath)
@@ -18,7 +20,7 @@ namespace RpaDesigner
             var lines = new List<string>(); int passed = 0, failed = 0;
             lines.Add("mLAMP self-test report");
             lines.Add("UTC: " + DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
-            lines.Add("Artificial DNA only; no enzyme kinetics, allele selectivity or clinical performance validation.");
+            lines.Add("Synthetic DNA, Ren 2019 TP53 and user-supplied CYP2C9 rs1057910 sequences; no enzyme kinetics, allele selectivity or clinical performance validation.");
             Action<string, Action> test = delegate(string title, Action action)
             {
                 var watch = Stopwatch.StartNew();
@@ -35,6 +37,134 @@ namespace RpaDesigner
                 Require(s.ExtraMismatchFromThreePrime == 3 && !s.IncludeLoops, "Preset must use the paper's initial third-position/four-primer choice.");
                 s.SnpOrientation = "BIP";
                 Require(LampDesignSettings.MLampDefaults().SnpOrientation == "FIP", "Preset instances must not share mutable state.");
+            });
+            test("Widened bounds admit published TP53 regions and both edited F2 alleles", delegate
+            {
+                // Ren 2019 SI Table S1. The wild-type target has C at position 38.
+                const string target = "CTTTGAGGTGCGTGTTTGTGCCTGTCCTGGGAGAGACCGGCGCACAGAGGAAGAGAATCTCCGCAAGAAAGGGGAGC"
+                    + "CTCACCACGAGCTGCCCCCAGGGAGCACTAAGCGAGGTAAGCAAGCAGGACAAGAAGCGGTGGAGGAGACCAAGGGT"
+                    + "GCAGTTATGCCTCAGATTCACTTTTATCACCTTTCCTTGCCTCTTT";
+                LampDesignSettings s = LampDesignSettings.MLampDefaults();
+                LampRegion f3 = PaperRegion("F3", "CTTTGAGGTGCGTGTTTG", s), b3 = PaperRegion("B3", "AGAGGCAAGGAAAGGTG", s);
+                LampRegion f1 = PaperRegion("F1c", "CTCCCCTTTCTTGCGGAG", s), b1 = PaperRegion("B1c", "CCAGGGAGCACTAAGCGA", s);
+                LampRegion b2 = PaperRegion("B2", "TAACTGCACCCTTGGTCT", s);
+                LampRegion wtF2 = PaperRegion("F2", "TGCCTGTCCTGGGAGAGTCC", s), mutF2 = PaperRegion("F2", "TGCCTGTCCTGGGAGAGTCT", s);
+                IList anchors = (IList)InvokeEngine("Anchored", target, 38, false, s, CancellationToken.None);
+                bool nativeFound = false;
+                foreach (object anchor in anchors)
+                    nativeFound |= (int)anchor.GetType().GetField("Start").GetValue(anchor) == 19
+                        && (int)anchor.GetType().GetField("End").GetValue(anchor) == 38;
+                Require(nativeFound, "The unmodified 20-nt F2 was rejected before artificial-mismatch processing.");
+                foreach (LampRegion f2 in new[] { wtF2, mutF2 })
+                {
+                    var oligo = (LampOligo)InvokeEngine("Oligo", "FIP", s, CancellationToken.None, new[] { f1, f2 });
+                    Require(oligo != null && oligo.Sequence == f1.Sequence + f2.Sequence && oligo.Sequence.Length == 38,
+                        "Published concatenated FIP was excluded or changed.");
+                }
+                Require(InvokeEngine("Oligo", "BIP", s, CancellationToken.None, new[] { b1, b2 }) != null,
+                    "Published concatenated BIP was excluded.");
+                Require(f3.Sequence.Length == 18 && b3.Sequence.Length == 17, "Paper outer-primer fixture changed.");
+                // A user's old, tighter bound must still reject these F2 sequences.
+                s.F2Tm = new LampTmRange(55, 65);
+                Require(InvokeEngine("ModifiedRegion", wtF2, wtF2.Sequence, s) == null
+                    && InvokeEngine("ModifiedRegion", mutF2, mutF2.Sequence, s) == null,
+                    "Wider defaults silently bypassed an explicit F2 Tm limit.");
+            });
+            test("Widened CYP2C9 search retains or improves the former complete-candidate score", delegate
+            {
+                SnpInput input = Cyp2c9Input();
+                Require(input.Reference.Sequence.Length == 401 && input.Position == 201
+                    && input.ReferenceAllele == 'A' && input.AlternateAllele == 'C', "CYP2C9 regression fixture changed.");
+                LampDesignResult narrow = LampDesignEngine.DesignSnp(input, FormerMLampBounds(), null, CancellationToken.None);
+                LampDesignResult wide = LampDesignEngine.DesignSnp(input, LampDesignSettings.MLampDefaults(), null, CancellationToken.None);
+                Require(narrow.Sets.Count > 0 && wide.Sets.Count > 0, "CYP2C9 fixture lost all mLAMP candidates.");
+                Require(wide.Sets[0].Score >= 82.59 && wide.Sets[0].Score >= narrow.Sets[0].Score,
+                    "Wider bounds again discarded a better complete candidate: narrow=" + narrow.Sets[0].Score.ToString("F2", CultureInfo.InvariantCulture)
+                    + ", wide=" + wide.Sets[0].Score.ToString("F2", CultureInfo.InvariantCulture) + ".");
+                Require(wide.Sets.Exists(delegate(LampPrimerSet set)
+                {
+                    return set.FIP.Sequence == "AATGTCACAGGTCACTGCATGGCACGAGGTCCAGAGATTCA"
+                        && set.AlternateInner.Sequence == "AATGTCACAGGTCACTGCATGGCACGAGGTCCAGAGATTCC"
+                        && set.BIP.Sequence == "TCAGAAACTATCTCATTCCCAAGGTGGACTTCGAAAACATGGAGT"
+                        && set.F3.Sequence == "ATGCCCTACACAGATGCT" && set.B3.Sequence == "GTTATGCACTTCTCTCACCC"
+                        && set.F3.Regions[0].Start == 159 && set.F3.Regions[0].End == 176
+                        && set.B3.Regions[0].Start == 360 && set.B3.Regions[0].End == 379
+                        && set.BIP.Regions[0].Start == 253 && set.BIP.Regions[0].End == 277
+                        && set.BIP.Regions[1].Start == 301 && set.BIP.Regions[1].End == 320;
+                }), "The former complete CYP2C9 candidate did not survive through final widened search output.");
+                lines.Add("      CYP2C9 rs1057910 software regression: former bounds " + narrow.Sets[0].Score.ToString("F2", CultureInfo.InvariantCulture)
+                    + "; widened bounds " + wide.Sets[0].Score.ToString("F2", CultureInfo.InvariantCulture) + ".");
+                Validate(wide, 3);
+            });
+            test("CYP2C9 former 25-nt B1c reaches arm selection with its original 20-nt B2", delegate
+            {
+                SnpInput input = Cyp2c9Input();
+                LampDesignSettings settings = (LampDesignSettings)InvokeEngine("Validate", LampDesignSettings.MLampDefaults(), input.Reference.Sequence.Length);
+                object catalog = InvokeEngine("BuildCatalog", input.Reference.Sequence, settings, CancellationToken.None);
+                object role = catalog.GetType().GetMethod("For").Invoke(catalog, new object[] { "B2" });
+                object anneal = null;
+                foreach (object w in (IEnumerable)role.GetType().GetField("All").GetValue(role))
+                    if (Coordinate(w, "Start") == 301 && Coordinate(w, "End") == 320) { anneal = w; break; }
+                Require(anneal != null, "CYP2C9 original B2 window was excluded before arm selection.");
+                MethodInfo arms = typeof(LampDesignEngine).GetMethod("Arms", BindingFlags.Static | BindingFlags.NonPublic);
+                object cache = Activator.CreateInstance(arms.GetParameters()[3].ParameterType);
+                IEnumerable values = (IEnumerable)InvokeEngine("Arms", anneal, true, catalog, cache);
+                bool retained = false;
+                foreach (object arm in values)
+                {
+                    object inner = arm.GetType().GetField("Inner").GetValue(arm);
+                    object actualAnneal = arm.GetType().GetField("Anneal").GetValue(arm);
+                    retained |= Coordinate(inner, "Start") == 253 && Coordinate(inner, "End") == 277
+                        && Coordinate(actualAnneal, "Start") == 301 && Coordinate(actualAnneal, "End") == 320;
+                }
+                Require(retained, "The former B1c 253-277 / B2 301-320 pair was prematurely pruned under widened bounds.");
+            });
+            test("CYP2C9 original complete candidate still scores 82.59 under widened settings", delegate
+            {
+                LampDesignSettings settings = LampDesignSettings.MLampDefaults();
+                LampPrimerSet set = FormerCyp2c9Candidate(Cyp2c9Input(), settings);
+                double reference = (double)InvokeEngine("ReactionPenalty", set, false, settings, CancellationToken.None);
+                double alternate = (double)InvokeEngine("ReactionPenalty", set, true, settings, CancellationToken.None);
+                double penalty = (reference + alternate) / 2.0
+                    + 0.05 * Math.Abs(set.BIP.Regions[1].End - set.FIP.Regions[1].Start + 1 - 140)
+                    + 0.01 * Math.Abs(set.SpanLength - 200);
+                Require(Math.Abs(penalty - 5.27000099) < 0.000001 && DesignEngine.ScoreFromPenalty(penalty) == 82.59,
+                    "Search improvement changed the original complete candidate's final scoring weights or sequence metrics.");
+            });
+            test("Structure preview cache reuses results and exhausted budget records fallback", delegate
+            {
+                LampDesignSettings settings = LampDesignSettings.MLampDefaults();
+                object catalog = InvokeEngine("BuildCatalog", Cyp2c9Input().Reference.Sequence, settings, CancellationToken.None);
+                Type type = catalog.GetType(); FieldInfo budget = type.GetField("StructureProbeBudget"), skipped = type.GetField("StructureProbeSkipped");
+                const string dna = "TCAGAAACTATCTCATTCCCAAGGTGGACTTCGAAAACATGGAGT";
+                long before = (long)budget.GetValue(catalog);
+                double first = (double)InvokeEngine("ProbeStructure", dna, catalog);
+                long after = (long)budget.GetValue(catalog);
+                Require(after == before - 4L * dna.Length * dna.Length && !(bool)skipped.GetValue(catalog),
+                    "An affordable structure preview must debit its work budget without recording fallback.");
+                double cached = (double)InvokeEngine("ProbeStructure", dna, catalog);
+                Require(cached == first && (long)budget.GetValue(catalog) == after,
+                    "Cached structure previews must reuse the same result without charging work twice.");
+                budget.SetValue(catalog, 0L);
+                const string unpreviewed = "AATGTCACAGGTCACTGCATGGCACGAGGTCCAGAGATTCA";
+                var cache = (IDictionary)type.GetField("StructureCache").GetValue(catalog);
+                Require(!cache.Contains(unpreviewed), "Exhausted-budget fixture was already previewed.");
+                Require((double)InvokeEngine("ProbeStructure", unpreviewed, catalog) == 0
+                    && (long)budget.GetValue(catalog) == 0 && (bool)skipped.GetValue(catalog),
+                    "An exhausted preview budget must record its unevaluated fallback without going negative.");
+            });
+            test("Structure preview observes cancellation even for a cached sequence", delegate
+            {
+                object catalog = InvokeEngine("BuildCatalog", Cyp2c9Input().Reference.Sequence, LampDesignSettings.MLampDefaults(), CancellationToken.None);
+                const string dna = "TCAGAAACTATCTCATTCCCAAGGTGGACTTCGAAAACATGGAGT";
+                InvokeEngine("ProbeStructure", dna, catalog);
+                using (var cancellation = new CancellationTokenSource())
+                {
+                    cancellation.Cancel(); catalog.GetType().GetField("Cancellation").SetValue(catalog, cancellation.Token);
+                    bool rejected = false;
+                    try { InvokeEngine("ProbeStructure", dna, catalog); } catch (OperationCanceledException) { rejected = true; }
+                    Require(rejected, "A cached preview bypassed the user's cancellation request.");
+                }
             });
             test("Zero, second and third-position designs retain exact allele and mismatch coordinates", delegate
             {
@@ -140,6 +270,80 @@ namespace RpaDesigner
             s.RegionMin = s.RegionMax = 20; s.MaxSets = 2; s.GcMin = 20; s.GcMax = 80;
             s.AnnealTmMin = s.InnerTmMin = 35; s.AnnealTmMax = s.InnerTmMax = 85;
             s.ExtraMismatchFromThreePrime = offset; return s;
+        }
+        private static SnpInput Cyp2c9Input()
+        {
+            // User-provided CYP2C93 rs1057910 400.fasta; GRCh38.p14 coordinates
+            // NC_000010.11:94981096-94981496. This tests search/ranking software,
+            // not amplification, allele discrimination or clinical performance.
+            return SnpParser.Parse(">CYP2C9_rs1057910_user_supplied_software_regression_GRCh38_p14\n"
+                + "ACCTTCATGATTCATATACCCCTGAATTGCTACAACAAATGTGCCATTTTTCTCCTTTTCCATCAGTTTT"
+                + "TACTTGTGTCTTATCAGCTAAAGTCCAGGAAGAGATTGAACGTGTGATTGGCAGAAACCGGAGCCCCTGC"
+                + "ATGCAAGACAGGAGCCACATGCCCTACACAGATGCTGTGGTGCACGAGGTCCAGAGATAC[A>C]TTGACCTTC"
+                + "TCCCCACCAGCCTGCCCCATGCAGTGACCTGTGACATTAAATTCAGAAACTATCTCATTCCCAAGGTAAG"
+                + "TTTGTTTCTCCTACACTGCAACTCCATGTTTTCGAAGTCCCCAAATTCATAGTATCATTTTTAAACCTCT"
+                + "ACCATCACCGGGTGAGAGAAGTGCATAACTCATATGTATGGCAGTTTAACT");
+        }
+        private static LampDesignSettings FormerMLampBounds()
+        {
+            LampDesignSettings s = LampDesignSettings.MLampDefaults();
+            s.RegionMin = 18; s.RegionMax = 27; s.GcMin = 35; s.GcMax = 70;
+            s.AnnealTmMin = 55; s.AnnealTmMax = 65; s.InnerTmMin = 60; s.InnerTmMax = 70;
+            s.CoreSpanMin = 110; s.CoreSpanMax = 190; s.SpanMin = 120; s.SpanMax = 300;
+            return s;
+        }
+        private static int Coordinate(object value, string field)
+        { return (int)value.GetType().GetField(field).GetValue(value); }
+        private static LampPrimerSet FormerCyp2c9Candidate(SnpInput input, LampDesignSettings settings)
+        {
+            // First group in the user's mLAMP_20260929_v0.19.html report.
+            // Rebuild the fixed candidate independently of today's search order.
+            string sequence = input.Reference.Sequence;
+            LampRegion f1 = FixtureRegion("F1c", sequence, 227, 248, true, settings);
+            LampRegion f2 = FixtureRegion("F2", sequence, 183, 201, false, settings);
+            char[] reference = f2.Sequence.ToCharArray(), alternate = f2.Sequence.ToCharArray();
+            reference[reference.Length - 3] = alternate[alternate.Length - 3] = 'T';
+            alternate[alternate.Length - 1] = input.AlternateAllele;
+            LampRegion edited = (LampRegion)InvokeEngine("ModifiedRegion", f2, new string(reference), settings);
+            LampRegion editedAlternate = (LampRegion)InvokeEngine("ModifiedRegion", f2, new string(alternate), settings);
+            Require(edited != null && editedAlternate != null, "Original edited F2 alleles no longer meet the widened bounds.");
+            var set = new LampPrimerSet { SpecificInner = "FIP", SpanStart = 159, SpanEnd = 379, SpanLength = 221,
+                ExtraMismatchPosition = 199, ExtraMismatchTemplateBase = 'A', ExtraMismatchPrimerBase = 'T' };
+            set.F3 = (LampOligo)InvokeEngine("Oligo", "F3", settings, CancellationToken.None,
+                new[] { FixtureRegion("F3", sequence, 159, 176, false, settings) });
+            set.B3 = (LampOligo)InvokeEngine("Oligo", "B3", settings, CancellationToken.None,
+                new[] { FixtureRegion("B3", sequence, 360, 379, true, settings) });
+            set.FIP = (LampOligo)InvokeEngine("Oligo", "FIP", settings, CancellationToken.None, new[] { f1, edited });
+            set.AlternateInner = (LampOligo)InvokeEngine("Oligo", "FIP_alt", settings, CancellationToken.None, new[] { f1, editedAlternate });
+            set.BIP = (LampOligo)InvokeEngine("Oligo", "BIP", settings, CancellationToken.None, new[] {
+                FixtureRegion("B1c", sequence, 253, 277, false, settings), FixtureRegion("B2", sequence, 301, 320, true, settings) });
+            Require(set.F3 != null && set.B3 != null && set.FIP != null && set.BIP != null && set.AlternateInner != null,
+                "Original CYP2C9 complete candidate could not be reconstructed.");
+            set.FIP.SnpIndex = set.FIP.Sequence.Length - 1; set.AlternateInner.SnpIndex = set.AlternateInner.Sequence.Length - 1;
+            Equal("TCAGAAACTATCTCATTCCCAAGGTGGACTTCGAAAACATGGAGT", set.BIP.Sequence, "Original 45-nt CYP2C9 BIP");
+            return set;
+        }
+        private static LampRegion FixtureRegion(string role, string sequence, int start, int end, bool reverse, LampDesignSettings settings)
+        {
+            string dna = sequence.Substring(start - 1, end - start + 1);
+            if (reverse) dna = DesignEngine.ReverseComplement(dna);
+            var original = new LampRegion { Name = role, Sequence = dna, Start = start, End = end, Reverse = reverse };
+            var actual = (LampRegion)InvokeEngine("ModifiedRegion", original, dna, settings);
+            Require(actual != null, "CYP2C9 fixture region excluded: " + role);
+            return actual;
+        }
+        private static LampRegion PaperRegion(string role, string dna, LampDesignSettings settings)
+        {
+            Require(dna.Length >= settings.RegionMin && dna.Length <= settings.RegionMax, "Paper length excluded: " + role);
+            var original = new LampRegion { Name = role, Sequence = dna, Start = 1, End = dna.Length };
+            var actual = (LampRegion)InvokeEngine("ModifiedRegion", original, dna, settings);
+            Require(actual != null, "Paper GC or reference Tm excluded: " + role);
+            return actual;
+        }
+        private static object InvokeEngine(string name, params object[] args)
+        {
+            try { return typeof(LampDesignEngine).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, args); }
+            catch (TargetInvocationException ex) { throw ex.InnerException; }
         }
         private static SnpInput Input(string source)
         {

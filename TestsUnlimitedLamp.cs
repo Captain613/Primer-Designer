@@ -28,13 +28,13 @@ namespace RpaDesigner
             {
                 var result = RunDesign(source, new LampDesignSettings());
                 Require(result.Sets.Count == 10, "Default count changed.");
-                var explicitSettings = new LampDesignSettings { RegionMin = 18, RegionMax = 27, GcMin = 35, GcMax = 70,
-                    CoreSpanMin = 110, CoreSpanMax = 190, SpanMin = 120, SpanMax = 300,
+                var explicitSettings = new LampDesignSettings { RegionMin = 17, RegionMax = 30, GcMin = 30, GcMax = 75,
+                    CoreSpanMin = 100, CoreSpanMax = 220, SpanMin = 110, SpanMax = 350,
                     MonovalentMilliMolar = 50, MagnesiumMilliMolar = 4, OligoNanoMolar = 100 };
                 foreach (string role in new string[] { "F3", "B3", "F2", "B2", "F1c", "B1c", "LF", "LB" })
                 {
                     bool high = role == "F1c" || role == "B1c" || role == "LF" || role == "LB";
-                    typeof(LampDesignSettings).GetField(role + "Tm").SetValue(explicitSettings, new LampTmRange(high ? 60 : 55, high ? 70 : 65));
+                    typeof(LampDesignSettings).GetField(role + "Tm").SetValue(explicitSettings, new LampTmRange(high ? 58 : 52, high ? 72 : 68));
                 }
                 var explicitResult = RunDesign(source, explicitSettings);
                 Require(explicitResult.Sets.Count == result.Sets.Count, "Implicit and explicit finite candidate counts differ.");

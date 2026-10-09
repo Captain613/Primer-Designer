@@ -49,7 +49,7 @@ internal static class LampRegionTmUiCheck
                 Field<NumericUpDown>(form,"lampCoreSpanMax").Value=155;
                 Named<CheckBox>(form,"lampCoreSpanMinUnlimited").Checked=true;
                 var spans=Settings(form);
-                Check(spans.CoreSpanMax==155&&spans.CoreSpanMinUnlimited&&!spans.CoreSpanMaxUnlimited&&spans.SpanMin==120&&spans.SpanMax==300,
+                Check(spans.CoreSpanMax==155&&spans.CoreSpanMinUnlimited&&!spans.CoreSpanMaxUnlimited&&spans.SpanMin==110&&spans.SpanMax==350,
                     "F2-B2 span and its one-sided unlimited remain independent of F3-B3 span.");
                 mode.SelectedIndex=4;mode.SelectedIndex=5;mode.SelectedIndex=2;
                 Check(Settings(form).CoreSpanMax==155&&Settings(form).CoreSpanMinUnlimited,"Region and span choices survive mode switches.");
@@ -93,14 +93,14 @@ internal static class LampRegionTmUiCheck
     private static void CheckDefaults(MainForm form,LampDesignSettings defaults)
     {
         var settings=Settings(form);
-        Check(settings.RegionMin==18&&settings.RegionMax==27&&settings.GcMin==35&&settings.GcMax==70,"Default LAMP search bounds are 18-27 nt and 35-70 percent GC.");
-        Check(settings.SpanMin==120&&settings.SpanMax==300&&settings.CoreSpanMin==110&&settings.CoreSpanMax==190,
+        Check(settings.RegionMin==17&&settings.RegionMax==30&&settings.GcMin==30&&settings.GcMax==75,"Default LAMP search bounds are 17-30 nt and 30-75 percent GC.");
+        Check(settings.SpanMin==110&&settings.SpanMax==350&&settings.CoreSpanMin==100&&settings.CoreSpanMax==220,
             "Two separate default span definitions are present.");
         foreach(string role in roles)
         {
             LampTmRange value=settings.GetTm(role),expected=defaults.GetTm(role);
             bool inner=role=="F1c"||role=="B1c"||role=="LF"||role=="LB";
-            Check(expected.Min==(inner?60:55)&&expected.Max==(inner?70:65),"Shared default Tm search band is intentionally broad: "+role);
+            Check(expected.Min==(inner?58:52)&&expected.Max==(inner?72:68),"Shared default Tm search band is intentionally broad: "+role);
             Check(value.Min==expected.Min&&value.Max==expected.Max&&!value.MinUnlimited&&!value.MaxUnlimited,"Initial/reset bounds match shared broad search defaults: "+role);
             Check(Number(form,role,"Min").Enabled&&Number(form,role,"Max").Enabled,"Reset enables both numeric bounds: "+role);
         }
