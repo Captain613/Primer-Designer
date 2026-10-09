@@ -14,12 +14,14 @@ namespace RpaDesigner
 
     public sealed class LampDesignSettings
     {
-        public int RegionMin = 18, RegionMax = 27;
-        public int SpanMin = 120, SpanMax = 300, MaxSets = 10;
-        public double GcMin = 35, GcMax = 70;
-        public double AnnealTmMin = 55, AnnealTmMax = 65, InnerTmMin = 60, InnerTmMax = 70;
+        // Broad candidate-search bounds. Ren 2019's TP53 example includes
+        // a 17-nt B3 and F2 reference Tm above 65 C in this model.
+        public int RegionMin = 17, RegionMax = 30;
+        public int SpanMin = 110, SpanMax = 350, MaxSets = 10;
+        public double GcMin = 30, GcMax = 75;
+        public double AnnealTmMin = 52, AnnealTmMax = 68, InnerTmMin = 58, InnerTmMax = 72;
         public LampTmRange F3Tm, B3Tm, F2Tm, B2Tm, F1cTm, B1cTm, LFTm, LBTm;
-        public int CoreSpanMin = 110, CoreSpanMax = 190;
+        public int CoreSpanMin = 100, CoreSpanMax = 220;
         public bool CoreSpanMinUnlimited, CoreSpanMaxUnlimited;
         public bool RegionMinUnlimited, RegionMaxUnlimited, SpanMinUnlimited, SpanMaxUnlimited;
         public bool GcMinUnlimited, GcMaxUnlimited, AnnealTmMinUnlimited, AnnealTmMaxUnlimited;
@@ -130,6 +132,9 @@ namespace RpaDesigner
     public static class LampDesignEngine
     {
         private const int LeftAnchorLimit = 1600, FinalLayoutLimit = 320;
+        private const int InnerWindowsPerStart = 4, OtherWindowsPerStart = 2;
+        private const int InnerProbeLimit = 12, InnerArmLimit = 4, OuterArmLimit = 2, LayoutsPerBucket = 8;
+        private const int StructureProbeMaxLength = 256;
         private static readonly string[] TmRoles = { "F3", "B3", "F2", "B2", "F1c", "B1c", "LF", "LB" };
 
         private sealed class Window
@@ -151,6 +156,10 @@ namespace RpaDesigner
         private sealed class Catalog
         {
             public Dictionary<string, RoleCatalog> Roles = new Dictionary<string, RoleCatalog>(StringComparer.Ordinal);
+            public CancellationToken Cancellation;
+            public Dictionary<string, double> StructureCache = new Dictionary<string, double>(StringComparer.Ordinal);
+            public long StructureProbeBudget = 100000000;
+            public bool StructureProbeSkipped;
             public RoleCatalog For(string role) { return Roles[role]; }
         }
 
@@ -216,14 +225,14 @@ namespace RpaDesigner
         private sealed class Arm
         {
             public Window Outer, Anneal, Inner;
-            public double Penalty;
+            public double Penalty, TmPenalty, NativeStructurePenalty;
         }
 
         private sealed class Layout
         {
             public Arm Left, Right;
             public string Specific;
-            public double Penalty;
+            public double Penalty, LocalPenalty;
         }
 
         private sealed class Evaluated
@@ -328,10 +337,11 @@ namespace RpaDesigner
             }
             List<Layout> layouts = new List<Layout>();
             foreach (List<Layout> group in buckets.Values) layouts.AddRange(group);
-            layouts.Sort(CompareLayout);
-            if (layouts.Count > FinalLayoutLimit) layouts.RemoveRange(FinalLayoutLimit, layouts.Count - FinalLayoutLimit);
+            TrimLayouts(layouts, FinalLayoutLimit);
             result.SearchTruncated = true;
-            result.Notes.Add("采用有限搜索：F3、B3、F2、B2、F1c、B1c、LF、LB 各自按其 Tm 范围筛选，每个区域在每个起点各保留至多 2 个窗口、每侧保留至多 4 个布局；普通模式最多 1,600 个分散起点。按普通起点的 20 nt 分箱或 SNP 方向及 F2/B2 长度分组，每组初筛保留至多 3 个布局，最终至多评估 320 个六区域布局。环引物各核验至多 6 个窗口。可能遗漏合适组合。");
+            result.Notes.Add("采用有限搜索：各区域按当前 Tm 范围筛选；每个起点的 F1c/B1c 各保留至多 4 个窗口，其余区域各 2 个。每个固定 F2/B2 从局部前 12 个内区段中保留局部前 2 个，并按拼接内引物的参考结构与 Tm 配平补充至多 4 个；外区段各 2 个，每侧至多 8 个布局。六区域布局同时保留局部排序与参考完整引物结构排序的候选。普通模式最多 1,600 个分散起点；按普通起点的 20 nt 分箱或 SNP 方向及 F2/B2 长度分组，每组保留至多 8 个布局，裁剪时预留 4 个局部优选名额，再按结构排序补足；最终至多评估 320 个六区域布局，裁剪时同样预留一半局部优选名额。环引物各核验至多 6 个窗口。预筛结构使用未人工改写的模板匹配内引物，PA 使用切后 DNA；实际等位、错配和修饰前体在最终阶段核验。可能遗漏合适组合。");
+            if (catalog.StructureProbeSkipped)
+                result.Notes.Add("早期结构预筛只核验不超过 256 nt 的参考完整引物，并使用 100,000,000 单位预算（每条按 4×长度平方估计，重复序列复用缓存）；超长或预算不足时回退局部指标，不视为已通过结构检查。最终仍按实际引物进行有限结构核验。");
             if (layouts.Count == 0)
             {
                 result.Notes.Add("未找到满足六区域方向、间距、长度、GC、参考 Tm 和模板跨度约束的布局。可检查 SNP 两侧是否有足够序列，或调整 LAMP 参数。");
@@ -469,7 +479,7 @@ namespace RpaDesigner
         private static Catalog BuildCatalog(string sequence, LampDesignSettings s, CancellationToken cancellation)
         {
             int size = sequence.Length + 1;
-            Catalog catalog = new Catalog();
+            Catalog catalog = new Catalog { Cancellation = cancellation };
             foreach (string role in TmRoles) catalog.Roles.Add(role, new RoleCatalog { Start = new List<Window>[size], End = new List<Window>[size], IdealTm = TargetTm(s, role) });
             WindowScanner scanner = s.RegionMaxUnlimited ? new WindowScanner(sequence, cancellation) : null;
             for (int start = 1; start <= sequence.Length - s.RegionMin + 1; start++)
@@ -485,7 +495,8 @@ namespace RpaDesigner
                     Window value = scanner == null ? MakeWindow(sequence.Substring(start - 1, length), start, s) : scanner.Make(start, length, s);
                     if (value == null) continue;
                     foreach (string role in TmRoles)
-                        if (FitsTm(value.Tm, s.GetTm(role))) KeepWindow(retained[role], value, catalog.For(role).IdealTm);
+                        if (FitsTm(value.Tm, s.GetTm(role))) KeepWindow(retained[role], value, catalog.For(role).IdealTm,
+                            role == "F1c" || role == "B1c" ? InnerWindowsPerStart : OtherWindowsPerStart);
                 }
                 foreach (string role in TmRoles)
                     foreach (Window w in retained[role])
@@ -497,10 +508,10 @@ namespace RpaDesigner
             return catalog;
         }
 
-        private static void KeepWindow(List<Window> values, Window value, double idealTm)
+        private static void KeepWindow(List<Window> values, Window value, double idealTm, int limit)
         {
             values.Add(value); values.Sort(delegate(Window a, Window b) { return CompareWindow(a, b, idealTm); });
-            if (values.Count > 2) values.RemoveAt(values.Count - 1);
+            if (values.Count > limit) values.RemoveAt(values.Count - 1);
         }
 
         private static void Add(List<Window>[] index, int position, Window window)
@@ -601,19 +612,74 @@ namespace RpaDesigner
             inners.RemoveAll(delegate(Window w) { return reverse ? w.End >= anneal.Start : w.Start <= anneal.End; });
             inners.Sort(delegate(Window a, Window b) { return CompareWindow(a, b, innerRole.IdealTm); });
             outers.Sort(delegate(Window a, Window b) { return CompareWindow(a, b, outerRole.IdealTm); });
-            if (inners.Count > 2) inners.RemoveRange(2, inners.Count - 2);
-            if (outers.Count > 2) outers.RemoveRange(2, outers.Count - 2);
-            found = new List<Arm>();
-            foreach (Window inner in inners) foreach (Window outer in outers)
+            if (inners.Count > InnerProbeLimit) inners.RemoveRange(InnerProbeLimit, inners.Count - InnerProbeLimit);
+            // Keep local winners as well as structure-aware choices. Native F2/B2
+            // structure is only a preview: final SNP/mismatch variants can differ.
+            var native = new Dictionary<Window, double>();
+            foreach (Window inner in inners)
             {
-                double penalty = RegionPenalty(anneal, annealRole.IdealTm) + RegionPenalty(inner, innerRole.IdealTm) + RegionPenalty(outer, outerRole.IdealTm)
-                    + 0.8 * Math.Max(0, anneal.Tm + 1 - inner.Tm);
-                found.Add(new Arm { Anneal = anneal, Inner = inner, Outer = outer, Penalty = penalty });
+                catalog.Cancellation.ThrowIfCancellationRequested();
+                native.Add(inner, NativeInnerStructure(anneal, inner, reverse, catalog));
+            }
+            var selected = new List<Window>();
+            for (int i = 0; i < Math.Min(2, inners.Count); i++) selected.Add(inners[i]);
+            inners.Sort(delegate(Window a, Window b)
+            {
+                double pa = RegionPenalty(a, innerRole.IdealTm) / 6.0 + native[a] / 4.0
+                    + 0.8 * Math.Max(0, anneal.Tm + 1 - a.Tm);
+                double pb = RegionPenalty(b, innerRole.IdealTm) / 6.0 + native[b] / 4.0
+                    + 0.8 * Math.Max(0, anneal.Tm + 1 - b.Tm);
+                int c = pa.CompareTo(pb); return c != 0 ? c : CompareWindow(a, b, innerRole.IdealTm);
+            });
+            foreach (Window inner in inners)
+            {
+                if (selected.Count >= InnerArmLimit) break;
+                if (!selected.Contains(inner)) selected.Add(inner);
+            }
+            if (outers.Count > OuterArmLimit) outers.RemoveRange(OuterArmLimit, outers.Count - OuterArmLimit);
+            found = new List<Arm>();
+            foreach (Window inner in selected) foreach (Window outer in outers)
+            {
+                double penalty = RegionPenalty(anneal, annealRole.IdealTm) + RegionPenalty(inner, innerRole.IdealTm) + RegionPenalty(outer, outerRole.IdealTm);
+                double outerStructure = ProbeStructure(reverse ? DesignEngine.ReverseComplement(outer.Sequence) : outer.Sequence, catalog);
+                found.Add(new Arm { Anneal = anneal, Inner = inner, Outer = outer, Penalty = penalty,
+                    TmPenalty = 0.8 * Math.Max(0, anneal.Tm + 1 - inner.Tm), NativeStructurePenalty = native[inner] + outerStructure });
             }
             cache.Add(key, found); return found;
         }
 
         private static double RegionPenalty(Window w, double tm) { return w.Penalty + 0.8 * Math.Abs(w.Tm - tm); }
+
+        private static double NativeInnerStructure(Window anneal, Window inner, bool reverse, Catalog catalog)
+        {
+            if (WindowLength(anneal) + WindowLength(inner) > StructureProbeMaxLength)
+            { catalog.StructureProbeSkipped = true; return 0; }
+            string sequence = reverse ? inner.Sequence + DesignEngine.ReverseComplement(anneal.Sequence)
+                : DesignEngine.ReverseComplement(inner.Sequence) + anneal.Sequence;
+            return ProbeStructure(sequence, catalog);
+        }
+
+        private static double ProbeStructure(string sequence, Catalog catalog)
+        {
+            catalog.Cancellation.ThrowIfCancellationRequested();
+            double penalty;
+            if (catalog.StructureCache.TryGetValue(sequence, out penalty)) return penalty;
+            long cost = 4L * sequence.Length * sequence.Length;
+            if (sequence.Length > StructureProbeMaxLength || cost > catalog.StructureProbeBudget)
+            {
+                catalog.StructureProbeSkipped = true;
+                // Zero means "no preview contribution", not a passed structure
+                // check. Keep the locally selected branch and disclose fallback.
+                catalog.StructureCache.Add(sequence, 0); return 0;
+            }
+            catalog.StructureProbeBudget -= cost;
+            // Do not apply composition filters here: artificial mismatches can
+            // change them. Hard filters still apply to actual final oligos.
+            var candidate = new DesignEngine.Candidate { Primer = new Primer { Sequence = sequence } };
+            DesignEngine.AddStructures(new List<DesignEngine.Candidate> { candidate }, catalog.Cancellation);
+            penalty = StructurePenalty(candidate.Primer);
+            catalog.StructureCache.Add(sequence, penalty); return penalty;
+        }
 
         private static void Search(List<Window> leftAnchors, List<Window> fixedRight, string specific, Catalog catalog,
             Dictionary<string, List<Arm>> leftCache, Dictionary<string, List<Arm>> rightCache, LampDesignSettings s,
@@ -638,19 +704,48 @@ namespace RpaDesigner
                         if (s.SnpMethod == "PA-LAMP" && r.Inner.End >= b2.Start - s.PaTailLength - 1) continue;
                         int span = r.Outer.End - l.Outer.Start + 1;
                         if (span < s.SpanMin || span > s.SpanMax) continue;
-                        double penalty = (l.Penalty + r.Penalty) / 6.0 + 0.8 * Math.Abs(f2.Tm - b2.Tm)
+                        double penalty = (l.Penalty + r.Penalty) / 6.0 + (l.NativeStructurePenalty + r.NativeStructurePenalty) / 4.0
+                            + l.TmPenalty + r.TmPenalty + 0.8 * Math.Abs(f2.Tm - b2.Tm)
+                            + 0.05 * Math.Abs(coreSpan - 140) + 0.01 * Math.Abs(span - 200);
+                        double localPenalty = (l.Penalty + r.Penalty + l.TmPenalty + r.TmPenalty) / 6.0 + 0.8 * Math.Abs(f2.Tm - b2.Tm)
                             + 0.05 * Math.Abs(coreSpan - 140) + 0.01 * Math.Abs(span - 200);
                         string bucketKey = specific.Length == 0 ? "normal:" + (f2.Start / 20)
                             : specific + ":" + (f2.End - f2.Start + 1) + ":" + (b2.End - b2.Start + 1);
                         List<Layout> bucket;
                         if (!buckets.TryGetValue(bucketKey, out bucket)) { bucket = new List<Layout>(); buckets.Add(bucketKey, bucket); }
-                        if (bucket.Count == 3 && penalty >= bucket[bucket.Count - 1].Penalty) continue;
-                        bucket.Add(new Layout { Left = l, Right = r, Specific = specific, Penalty = penalty });
-                        bucket.Sort(CompareLayout);
-                        if (bucket.Count > 3) bucket.RemoveAt(bucket.Count - 1);
+                        if (bucket.Count == LayoutsPerBucket && penalty > bucket[bucket.Count - 1].Penalty)
+                        {
+                            // Skip only when neither retained ordering can admit
+                            // this layout. A worse structure preview must not
+                            // exclude a candidate in the reserved local half.
+                            int betterLocal = 0;
+                            foreach (Layout kept in bucket) if (kept.LocalPenalty < localPenalty) betterLocal++;
+                            if (betterLocal >= LayoutsPerBucket / 2) continue;
+                        }
+                        bucket.Add(new Layout { Left = l, Right = r, Specific = specific, Penalty = penalty, LocalPenalty = localPenalty });
+                        TrimLayouts(bucket, LayoutsPerBucket);
                     }
                 }
             }
+        }
+
+        private static void TrimLayouts(List<Layout> layouts, int limit)
+        {
+            if (layouts.Count > limit)
+            {
+                var local = new List<Layout>(layouts);
+                local.Sort(delegate(Layout a, Layout b)
+                { int c = a.LocalPenalty.CompareTo(b.LocalPenalty); return c != 0 ? c : CompareLayout(a, b); });
+                var selected = local.GetRange(0, limit / 2);
+                layouts.Sort(CompareLayout);
+                foreach (Layout layout in layouts)
+                {
+                    if (selected.Count >= limit) break;
+                    if (!selected.Contains(layout)) selected.Add(layout);
+                }
+                layouts.Clear(); layouts.AddRange(selected);
+            }
+            layouts.Sort(CompareLayout);
         }
 
         private static int CompareLayout(Layout a, Layout b)
@@ -989,7 +1084,7 @@ namespace RpaDesigner
             result.Notes.Add("具体扩增方式：" + (result.Snp == null ? "常规 LAMP" : pa ? "PA-LAMP（引物可激活 LAMP，RNase H2 / RNA / C3）"
                 : mlamp ? "mLAMP（Ren 2019，FIP 人工错配型）" : "AS-LAMP（等位基因特异性 LAMP，内引物 3′ 末端判别）") + "。");
             result.Notes.Add("LAMP 四条核心引物为 F3、B3、FIP=F1c+F2、BIP=B1c+B2；可附加 LF/LB 环引物。所有订购序列均为实际 5′→3′ 序列，无连接符、无额外 linker。");
-            result.Notes.Add("六个核心区域沿输入正链为 F3、F2、F1、B1c、B2c、B3c，互不重叠。F2→F1 的对应 5′ 端距离及反向一侧均为 40–60 nt，外引物与相邻内区间隙为 0–60 nt。F2 至 B2 外缘跨度包含两端，独立使用设置的最短/最长界限；软件预设 110–190 nt，PrimerExplorer 官方推荐 120–160 nt。F3 至 B3 外缘跨度另行设置。");
+            result.Notes.Add("六个核心区域沿输入正链为 F3、F2、F1、B1c、B2c、B3c，互不重叠。F2→F1 的对应 5′ 端距离及反向一侧均为 40–60 nt，外引物与相邻内区间隙为 0–60 nt。F2 至 B2 外缘跨度包含两端，独立使用设置的最短/最长界限；软件预设 100–220 nt，PrimerExplorer 官方推荐 120–160 nt。F3 至 B3 外缘跨度另行设置。");
             result.Notes.Add("显示的序列是 F3 至 B3 的原始模板片段，不是完整 LAMP 扩增产物。LAMP 可生成不同长度的茎环、串联重复产物，不能用一条固定线性序列表示。");
             result.Notes.Add("参考 Tm：SantaLucia 1998 DNA 最近邻参数，单价盐 " + result.Settings.MonovalentMilliMolar.ToString("0.###", CultureInfo.InvariantCulture)
                 + " mM、总寡核苷酸浓度 " + result.Settings.OligoNanoMolar.ToString("0.###", CultureInfo.InvariantCulture)
@@ -999,7 +1094,7 @@ namespace RpaDesigner
             result.Notes.Add("分数是本程序自定义的候选排序，未获权威机构认证，不能解释为扩增成功率或 SNP 选择性。有限搜索和候选多样性处理可能跳过更高分方案。");
             result.Notes.Add("评分公式：Score=100/(1+P/25)。每个反应的 P 为区域惩罚均值 + 完整引物结构惩罚均值 + 反应内引物对互补惩罚均值 + Tm 配平惩罚。区域惩罚=0.12×|GC%−50|+0.2×|区域长度−22|+0.8×|Tm−目标Tm|；各区域 Tm 目标为所设有效范围的中点；任意一端无限制时，F1c/B1c/LF/LB 回退为65°C，其余为60°C。此目标统一用于窗口、布局和最终候选排序。结构惩罚=0.6×max(自互补−3,0)+1.8×max(3′自互补−2,0)+1.2×max(发卡茎−3,0)+0.5×max(串联重复跨度−8,0)；引物对惩罚=0.8×max(连续互补−3,0)+2.5×max(3′连续互补−2,0)。");
             result.Notes.Add("Tm 配平惩罚=0.8×[|Tm(F2)−Tm(B2)|+max(Tm(F2)+1−Tm(F1c),0)+max(Tm(B2)+1−Tm(B1c),0)]。AS-LAMP / mLAMP 先平均两个独立等位反应的 P；然后各模式均加 0.05×|有效F2..B2跨度−140|+0.01×|F3..B3跨度−200|；请求环引物时每缺少一条再加2。这些权重和偏好值均为程序自定义，不是文献验证的预测模型。");
-            result.Notes.Add("方法参考：Eiken PrimerExplorer V5 手册 https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_1.pdf ；SantaLucia 1998 最近邻模型 https://pmc.ncbi.nlm.nih.gov/articles/PMC19045/ 。PrimerExplorer 官方推荐 GC40–65%、F3/B3/F2/B2 Tm59–61°C、F1c/B1c/LF/LB Tm64–66°C、F2 至 B2 跨度120–160 nt；本软件为增加候选搜索空间，初始预设单区域长度18–27 nt、GC35–70%、对应 Tm55–65°C 与60–70°C、F2 至 B2 跨度110–190 nt。实际筛选始终按当前设置执行，不会自动放宽用户手动设置；搜索、结构评价及 Mg²⁺ 近似处理为本程序实现，不等同于 PrimerExplorer。");
+            result.Notes.Add("方法参考：Eiken PrimerExplorer V5 手册 https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_1.pdf ；SantaLucia 1998 最近邻模型 https://pmc.ncbi.nlm.nih.gov/articles/PMC19045/ 。PrimerExplorer 官方推荐 GC40–65%、F3/B3/F2/B2 Tm59–61°C、F1c/B1c/LF/LB Tm64–66°C、F2 至 B2 跨度120–160 nt；本软件为增加候选搜索空间，初始预设单区域长度17–30 nt、GC30–75%、对应 Tm52–68°C 与58–72°C、F2 至 B2 跨度100–220 nt、F3 至 B3 跨度110–350 nt。这些允许范围是程序的候选探索设置，Ren 2019 未报告通用 Tm 或 ΔG 阈值。实际筛选始终按当前设置执行，不会自动放宽用户手动设置；搜索、结构评价及 Mg²⁺ 近似处理为本程序实现，不等同于 PrimerExplorer。");
             if (pa)
             {
                 result.Notes.Add("PA-LAMP 仅提供 BIP 激活方向。先在 SNP 正链坐标+1 处结束切后有效 B2 的 3′ 端，再在前体中依次添加与 SNP 配对的一个 RNA、" + result.Settings.PaTailLength

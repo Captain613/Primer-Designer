@@ -64,7 +64,7 @@ namespace RpaDesigner
         public static string TextReport(DesignResult r)
         {
             var b = new StringBuilder();
-            b.AppendLine("RPA 引物设计助手 v0.19 — 普通扩增候选报告");
+            b.AppendLine("RPA 引物设计助手 v" + AppVersion.Display + " — 普通扩增候选报告");
             b.AppendLine("导出时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             b.AppendLine("序列：" + r.Input.Name + " | " + r.Input.Sequence.Length + " nt");
             var s = r.Settings;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -249,7 +249,7 @@ namespace RpaDesigner
         {
             if (r == null) throw new ArgumentNullException("r");
             var b = new Builder();
-            b.Line("RPA / LAMP 引物设计助手 v0.19 — " + ModeName(r) + " 候选报告");
+            b.Line("RPA / LAMP 引物设计助手 v" + AppVersion.Display + " — " + ModeName(r) + " 候选报告");
             b.Line("导出时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             b.Line("序列：" + r.Input.Name + " | " + r.Input.Sequence.Length + " nt");
             if (r.Snp != null) b.Line("SNP：正链第 " + r.Snp.Position + " 位 [" + r.Snp.ReferenceAllele + ">" + r.Snp.AlternateAllele + "]");
@@ -342,7 +342,7 @@ namespace RpaDesigner
         public static string Html(LampDesignResult r)
         {
             var b = new StringBuilder("<!doctype html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-            b.Append("<title>RPA / LAMP 引物设计助手 v0.19 — LAMP 候选报告</title><style>body{margin:0;background:#f3f6f8;color:#1a2b3e;font:15px/1.65 'Microsoft YaHei',sans-serif}main{max-width:1160px;margin:auto;padding:24px}h1{font-size:26px}h2{font-size:21px;margin:28px 0 12px}h3{margin:0 0 8px;font-size:17px;color:#007775}article{background:white;border:1px solid #dce5eb;border-radius:10px;padding:18px;margin:12px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:14px}.grid article{margin:0}.meta{white-space:pre-wrap;margin:0 0 12px;color:#52616c}.dna{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;font:16px/1.8 Consolas,monospace;background:#f6f9fa;padding:12px}.note{color:#667582;font-size:13px;margin-bottom:0}.snp{color:#d32f2f;font-weight:700}.mismatch{color:#2563eb;font-weight:700}a{color:#007775}@media(max-width:600px){main{padding:12px}article{padding:12px}}@media print{body{background:white}main{padding:0}.snp,.mismatch{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><main>\n");
+            b.Append("<title>RPA / LAMP 引物设计助手 v" + AppVersion.Display + " — LAMP 候选报告</title><style>body{margin:0;background:#f3f6f8;color:#1a2b3e;font:15px/1.65 'Microsoft YaHei',sans-serif}main{max-width:1160px;margin:auto;padding:24px}h1{font-size:26px}h2{font-size:21px;margin:28px 0 12px}h3{margin:0 0 8px;font-size:17px;color:#007775}article{background:white;border:1px solid #dce5eb;border-radius:10px;padding:18px;margin:12px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:14px}.grid article{margin:0}.meta{white-space:pre-wrap;margin:0 0 12px;color:#52616c}.dna{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;font:16px/1.8 Consolas,monospace;background:#f6f9fa;padding:12px}.note{color:#667582;font-size:13px;margin-bottom:0}.snp{color:#d32f2f;font-weight:700}.mismatch{color:#2563eb;font-weight:700}a{color:#007775}@media(max-width:600px){main{padding:12px}article{padding:12px}}@media print{body{background:white}main{padding:0}.snp,.mismatch{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><main>\n");
             b.Append("<h1>").Append(ModeName(r)).Append(" 候选报告</h1>");
             HtmlInfo(b, "输入与结果", r.Input.Name + " | " + r.Input.Sequence.Length + " nt\n导出时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n候选：" + r.Sets.Count + " 组；搜索裁剪：" + (r.SearchTruncated ? "是" : "否") + (r.Snp == null ? "" : "\nSNP：" + r.Snp.Position + " [" + r.Snp.ReferenceAllele + ">" + r.Snp.AlternateAllele + "]；红色为 SNP 碱基" + (IsMLamp(r) ? "；蓝色为订购引物中的人为错配" : "")));
             HtmlInfo(b, "本次参数", Params(r.Settings));

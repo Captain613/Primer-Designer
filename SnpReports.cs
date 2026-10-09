@@ -220,7 +220,7 @@ namespace RpaDesigner
         {
             if (r == null) throw new ArgumentNullException("r");
             var b = new ReportBuilder();var s = r.Settings.Base;
-            b.AppendLine("RPA 引物设计助手 v0.19 — SNP 选择性扩增候选报告");
+            b.AppendLine("RPA 引物设计助手 v" + AppVersion.Display + " — SNP 选择性扩增候选报告");
             b.AppendLine("导出时间："+DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             b.AppendLine("序列："+r.Input.Reference.Name+" | "+r.Input.Reference.Sequence.Length+" nt | SNP："+r.Input.Position+" ["+r.Input.ReferenceAllele+">"+r.Input.AlternateAllele+"]");
             b.AppendLine("策略："+Strategy(r.Settings.ExtraMismatchFromThreePrime));
@@ -253,7 +253,7 @@ namespace RpaDesigner
             HighlightedReport report = HighlightedTextReport(r);
             var b = new StringBuilder();
             b.Append("<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-            b.Append("<title>RPA 引物设计助手 v0.19 — SNP 候选报告</title>\n<style>\n");
+            b.Append("<title>RPA 引物设计助手 v" + AppVersion.Display + " — SNP 候选报告</title>\n<style>\n");
             b.Append("body { margin: 0; padding: 24px; color: #172635; background: #f5f7fa; }\n");
             b.Append("main { max-width: 1200px; margin: 0 auto; padding: 24px; border: 1px solid #dce2e8; border-radius: 10px; background: #fff; }\n");
             b.Append("pre { margin: 0; font-family: Consolas, 'Microsoft YaHei', monospace; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; word-wrap: break-word; }\n");

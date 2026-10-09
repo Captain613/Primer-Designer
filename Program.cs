@@ -7,11 +7,23 @@ using System.Reflection;
 
 [assembly: AssemblyTitle("RPA / LAMP 引物设计助手")]
 [assembly: AssemblyDescription("RPA and LAMP primer designer with optional NCBI BLAST screening")]
-[assembly: AssemblyVersion("0.19.0.0")]
-[assembly: AssemblyFileVersion("0.19.0.0")]
+[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.0.0.0")]
 
 namespace RpaDesigner
 {
+    internal static class AppVersion
+    {
+        public static string Display
+        {
+            get
+            {
+                Version version = typeof(AppVersion).Assembly.GetName().Version;
+                return version.ToString(version.Revision > 0 ? 4 : version.Build > 0 ? 3 : 2);
+            }
+        }
+    }
+
     internal static class Program
     {
         [STAThread]

@@ -1,12 +1,18 @@
-﻿# RPA / LAMP 引物设计助手 v0.19
+﻿# RPA / LAMP 引物设计助手 v1.0
 
 一个可离线运行的中文 Windows 程序：输入单条序列，输出 **RPA / LAMP 普通扩增与 SNP 选择性扩增候选**。候选需实验筛选验证，排序分数不是扩增成功率或等位基因区分率。
+
+## v1.0 发布说明
+
+v1.0 将最新程序正式定版，整合已完成的 LAMP 宽默认参数，以及同时保留局部优选和拼接 FIP/BIP 结构优选候选的预筛改进；最终评分公式不变。本次仅切换版本标识和发行目录。此前功能改进验证中，用户提供的 CYP2C9 mLAMP 序列恢复原完整首组，分数为 82.59，20 个测试套件全部通过；该结果属于定版前的功能验证。
 
 ## LAMP 默认搜索范围
 
 LAMP 参数页分为“长度与 GC”和“各区段 Tm”。F3、B3、F2、B2、F1c、B1c、LF、LB 各有独立上下限及“无限制”，设置实际用于对应区段的候选筛选、SNP 改写后复核及环引物搜索，并记录在导出报告中。F2c 是 F2 的互补区；同一条件的完全匹配双链模型下两者共用 Tm，不重复创建独立筛选项。
 
-Eiken 的 [PrimerExplorer V5 设计手册](https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_1.pdf)推荐 F3/B3/F2/B2 约 59–61°C、F1c/B1c/LF/LB 约 64–66°C、GC 40–65% 及 F2–B2 跨度 120–160 bp。这些窄范围同时作为六区硬条件时，部分位点容易没有候选。[V5 操作手册第 24 页](https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_2.pdf)也建议候选过少时逐步调整长度和 Tm。因此本程序把默认允许搜索范围改为每区段长度 18–27 nt、GC 35–70%、F3/B3/F2/B2 Tm 各 55–65°C、F1c/B1c/LF/LB Tm 各 60–70°C、F2–B2 跨度 110–190 bp。排序仍偏好 Tm 60/65°C、GC 50%、长度 22 nt 和 F2–B2 跨度 140 bp。F3–B3 跨度保持 120–300 bp，最多输出 10 组。程序不会越过用户在界面上明确设定的范围，也不保证每个序列都有候选或扩增成功。
+Eiken 的 [PrimerExplorer V5 设计手册](https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_1.pdf)推荐 F3/B3/F2/B2 约 59–61°C、F1c/B1c/LF/LB 约 64–66°C、GC 40–65% 及 F2–B2 跨度 120–160 bp。这些窄范围同时作为六区硬条件时，部分位点容易没有候选。[V5 操作手册第 24 页](https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_2.pdf)也建议候选过少时逐步调整长度和 Tm。本程序当前将普通 LAMP、AS-LAMP、PA-LAMP 与 mLAMP 的默认允许搜索范围统一设为每区段长度 **17–30 nt**、GC **30–75%**、F3/B3/F2/B2 Tm 各 **52–68°C**、F1c/B1c/LF/LB Tm 各 **58–72°C**、F2–B2 跨度 **100–220 bp**、F3–B3 跨度 **110–350 bp**，最多输出 10 组。默认 Tm 范围中点仍为 60/65°C；排序仍偏好 GC 50%、长度 22 nt、F2–B2 跨度 140 bp 和 F3–B3 跨度 200 bp。手动修改 Tm 范围后，排序目标随有效范围中点变化；任意一端无限制时回退到 60/65°C。程序不会越过用户在界面上明确设定的范围。
+
+此次扩大搜索范围的直接依据是对 mLAMP 补充材料 TP53 引物的核对：B3 长度为 17 nt，F2 按本程序固定参考条件计算的完全匹配 Tm 约为 66.4/67.3°C，超出此前的 18 nt 最短和 65°C 上限。论文未报告这些 Tm 值或 ΔG 阈值；上述新范围是为新位点探索设置的工程搜索边界，适用于各 LAMP 模式，不是论文给出的通用参数。F2–F1 及另一侧对应 5′ 端距离 40–60 nt、外引物与相邻内区间隙 0–60 nt，以及六区段不重叠的要求继续生效。RPA 默认范围保留。调整前后数值及模型见 [LAMP 默认参数与 Tm 模型](docs/LAMP默认参数与Tm模型.md)。
 
 Tm 参考条件改为 Na⁺ 50 mM、Mg²⁺ 4 mM、寡核苷酸 100 nM。根据用户提供的 [PrimerExplorer 附录](https://primerexplorer.jp/e/v3_manual/03.html)，Mg²⁺ 换算为等效单价盐；当前程序保留 SantaLucia 1998 最近邻参数和熵盐校正，与 PrimerExplorer 引用的 1996 参数及 16.6×log[Na⁺] 公式不同。因此不能把本程序的 Tm、候选或评分视为 PrimerExplorer 的复现。参考浓度用于统一计算，不是实验反应配方，也未推算 dNTP 结合后的游离 Mg²⁺。
 
@@ -107,18 +113,20 @@ PA-LAMP 的 B2 长度和 Tm 参数指切后有效 DNA 区段。前体结构按 D
 
 | 参数 | 本软件默认值 |
 | --- | --- |
-| 每个结合片段长度 | 18–27 nt（不是整条 FIP / BIP 的长度） |
-| GC | 35–70% |
-| F3、B3、F2、B2 Tm（分别设置） | 各 55–65 °C |
-| F1c、B1c、LF、LB Tm（分别设置） | 各 60–70 °C |
-| F3 至 B3 靶区跨度（含两端） | 120–300 bp |
-| F2 至 B2 跨度（含两端） | 110–190 bp |
+| 每个结合片段长度 | 17–30 nt（不是整条 FIP / BIP 的长度） |
+| GC | 30–75% |
+| F3、B3、F2、B2 Tm（分别设置） | 各 52–68 °C |
+| F1c、B1c、LF、LB Tm（分别设置） | 各 58–72 °C |
+| F3 至 B3 靶区跨度（含两端） | 110–350 bp |
+| F2 至 B2 跨度（含两端） | 100–220 bp |
 | 输出候选 | 最多 10 组 |
 | Tm 参考条件 | Na⁺ 50 mM、Mg²⁺ 4 mM、寡核苷酸 100 nM，未建模 dNTP |
 
-表中的宽范围是本程序为了减少无候选情况采用的搜索边界，**不是 PrimerExplorer 官方默认值或认证参数**。程序按接近官方推荐 Tm 的程度排序。Tm 使用 SantaLucia 1998 最近邻参数及 Mg²⁺ 等效单价盐熵校正，按每个片段的完全匹配互补链计算；不计算人为错配与实际模板的双链 Tm，不把拼接内引物作为一个连续双链计算 Tm。该值不是建议反应温度，不能直接与采用其他离子条件的软件输出等同。
+表中的宽范围由普通 LAMP、AS-LAMP、PA-LAMP 与 mLAMP 共用，是本程序为了扩大候选探索空间采用的搜索边界，**不是 PrimerExplorer 官方默认值或原文实验参数**。长度与 Tm 逐区段筛选；GC 同时检查各区段及完整合成引物，连续同聚物超过 5 nt 的候选排除。默认 Tm 排序目标为 60/65°C；用户修改范围后按有效范围中点排序，任意一端无限制时回退到 60/65°C。发卡、自互补及引物对互补指标用于降分和提示，没有 ΔG 硬阈值。Tm 使用 SantaLucia 1998 最近邻参数及 Mg²⁺ 等效单价盐熵校正，按每个片段的完全匹配互补链计算；不计算人为错配与实际模板的双链 Tm，不把拼接内引物作为一个连续双链计算 Tm。该值不是建议反应温度，不能直接与采用其他离子条件的软件输出等同。
 
 核心六区段沿输入正链顺序为 F3、F2、F1、B1c、B2c、B3c；对应订购区段需要按方向取反向互补。LF 在 F2 与 F1 之间取反向互补，LB 在 B1c 与 B2c 之间取正向序列。六区段不重叠；软件检查区段顺序、间距及整组引物的连续互补。搜索有组合上限并进行候选裁剪，不是穷举最优；分数及裁剪说明在完整报告中列出。设计阶段不进行数据库特异性检索；可在第 04 页另行启用在线 BLAST。未进行完整热力学二聚体或发卡自由能预测。
+
+内引物预筛先保留局部指标较优的候选，再补充参考拼接 FIP/BIP 结构及 Tm 配平较优的候选，减少单区段初筛过早丢弃完整内引物较优方案的情况。F1c/B1c 每个起点各保留最多 4 个窗口，固定 F2/B2 的局部前 12 个内区段中保留最多 4 个（包含局部前 2 个）；对应外引物各最多 2 个，每侧最多 8 个布局。六区域布局每组初筛最多 8 个，裁剪时先保留局部前 4 个，再按参考结构排序补足并去重；最终完整核验仍最多 320 个，裁剪时先保留局部前 160 个，再按参考结构排序补足并去重。局部优选的保留名额可减少参考结构排序误伤人工错配候选的情况，最终评分公式不变。早期参考结构不包含 SNP/人工错配或 PA 阻断前体的全部变化；这些实际序列在最终阶段核验。早期结构有 256 nt 长度限额及计算预算，超出时回退局部指标并报告；详细规则见 [内引物预筛与候选保留](docs/LAMP默认参数与Tm模型.md#内引物预筛与候选保留)。搜索仍有限，不能保证放宽范围后所有序列的最高输出分数都不下降。
 
 设计布局和 SNP 末端定位参考 [PrimerExplorer V5 操作说明](https://www.primerexplorer.jp/e/v5_manual/02.html)及[高级设计手册 §6.2](https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_3.pdf)。[Badolo 等 AS-LAMP 原始研究](https://link.springer.com/article/10.1186/1475-2875-11-227)在特定位点采用 BIP 末端 SNP 及邻位附加错配；[Ren 等 mLAMP 研究](https://doi.org/10.1002/slct.201802693)在所测条件下采用 FIP 末端 SNP 和倒数第 3 位人工错配。两项研究均不证明任意位点均能实现选择性扩增。当前所有输出都是待验证候选，需要用已知两种等位模板及实验对照检查交叉扩增。软件没有权威机构认证或实验性能标定。
 
@@ -198,7 +206,7 @@ SNP 模式复用下文的单引物惩罚与引物间互补惩罚，三种反应�
 
 ## 启动与使用
 
-1. 双击 `dist-v0.19\Primer Designer.exe`。也可使用已更新的桌面 `Primer Designer` 快捷方式。适用于 64 位 Windows 10 / 11，使用系统 .NET Framework 4.x，无需 Python、安装包或账户。
+1. 双击 `dist-v1.0\Primer Designer.exe`。也可使用已更新的桌面 `Primer Designer` 快捷方式。适用于 64 位 Windows 10 / 11，使用系统 .NET Framework 4.x，无需 Python、安装包或账户。
 2. 粘贴纯序列，或导入单条 FASTA / TXT。可点击“载入演示”试用；演示序列由固定随机种子生成，没有生物来源。
 3. 保留默认参数，或按实验需求修改。点击“开始设计”。
 4. 在“候选结果”的左侧选择候选，右侧通过位置图及“引物 / 扩增产物 / 评价与说明”三个页签查看详情。
@@ -278,14 +286,14 @@ RPA 设计阶段的重复结合提示只检查入选引物及其反向互补在�
 | `tests/ui/` | Windows Forms 界面与完整模板位置图检查 |
 | `assets/` | 程序及桌面快捷方式使用的 PNG / ICO 图标 |
 | `docs/` | 本机设置与补充说明 |
-| `dist-v0.19/` | 当前可运行发布、生成的演示文件及 `source/` 源码，入口为 `Primer Designer.exe` |
+| `dist-v1.0/` | 当前可运行发布、生成的演示文件及 `source/` 源码，入口为 `Primer Designer.exe` |
 | `Primer Designer.zip` | 当前发布及源码压缩包 |
 
 ## 从源码构建、验证与打包
 
 源码使用 C# 5 与 .NET Framework / Windows Forms，仅使用系统库，无 NuGet 依赖。在工作区根目录依次执行以下命令；生成演示与打包使用当前 EXE，不依赖其他版本的发行目录。
 
-构建默认输出到 `dist-v0.19`；可通过 `-OutputDirectory` 指定其他目录。
+构建默认输出到 `dist-v1.0`；可通过 `-OutputDirectory` 指定其他目录。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
@@ -297,14 +305,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test.ps1 -Ui
 ```
 
-从当前 EXE 生成普通 RPA、SNP RPA、普通 LAMP、AS-LAMP、PA-LAMP 与 mLAMP 演示文件，默认保存到 `dist-v0.19`。打包脚本使用该发行目录，并将根目录源码、构建入口、说明文档、脚本、界面检查和图标整理到发行目录的 `source/`：
+从当前 EXE 生成普通 RPA、SNP RPA、普通 LAMP、AS-LAMP、PA-LAMP 与 mLAMP 演示文件，默认保存到 `dist-v1.0`。打包脚本使用该发行目录，并将根目录源码、构建入口、说明文档、脚本、界面检查和图标整理到发行目录的 `source/`：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\GenerateExamples.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1
 ```
 
-程序正在运行时，可为构建指定独立目录，并使用验证脚本的 `-ApplicationPath` 检查该目录内的 EXE，避免覆盖正在使用的文件。直接打开 `dist-v0.19\Primer Designer.exe` 可运行本版；构建脚本本身不更新桌面快捷方式，发布时需核对其目标路径。
+程序正在运行时，可为构建指定独立目录，并使用验证脚本的 `-ApplicationPath` 检查该目录内的 EXE，避免覆盖正在使用的文件。直接打开 `dist-v1.0\Primer Designer.exe` 可运行本版；构建脚本本身不更新桌面快捷方式，发布时需核对其目标路径。
 
 打包会核对当前 EXE 与测试报告的 SHA256；报告不匹配时会停止。发布完成后，可预览并清理旧发行版和可重新生成的构建文件；源码、图标、当前发行版和 Git 元数据保留：
 

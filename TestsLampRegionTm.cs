@@ -26,13 +26,13 @@ namespace RpaDesigner
             test("Practical defaults and legacy role fallbacks are explicit", delegate
             {
                 var settings = new LampDesignSettings();
-                Require(settings.RegionMin == 18 && settings.RegionMax == 27 && settings.GcMin == 35 && settings.GcMax == 70, "Default composition changed.");
-                Require(settings.CoreSpanMin == 110 && settings.CoreSpanMax == 190 && settings.SpanMin == 120 && settings.SpanMax == 300, "Two independent spans lost.");
+                Require(settings.RegionMin == 17 && settings.RegionMax == 30 && settings.GcMin == 30 && settings.GcMax == 75, "Default composition changed.");
+                Require(settings.CoreSpanMin == 100 && settings.CoreSpanMax == 220 && settings.SpanMin == 110 && settings.SpanMax == 350, "Two independent spans lost.");
                 Require(settings.MonovalentMilliMolar == 50 && settings.MagnesiumMilliMolar == 4 && settings.OligoNanoMolar == 100, "Reference buffer defaults wrong.");
                 foreach (string role in Roles)
                 {
                     LampTmRange tm = settings.GetTm(role); bool inner = Inner(role);
-                    Require(tm.Min == (inner ? 60 : 55) && tm.Max == (inner ? 70 : 65), "Wrong default role: " + role);
+                    Require(tm.Min == (inner ? 58 : 52) && tm.Max == (inner ? 72 : 68), "Wrong default role: " + role);
                 }
                 settings.AnnealTmMin = 51; settings.AnnealTmMax = 72; settings.InnerTmMin = 56; settings.InnerTmMax = 78;
                 foreach (string role in Roles) Require(settings.GetTm(role).Min == (Inner(role) ? 56 : 51), "Legacy fallback changed: " + role);
@@ -105,7 +105,8 @@ namespace RpaDesigner
                     object section = get.Invoke(catalog, new object[] { Roles[i] });
                     Array index = (Array)section.GetType().GetField("Start").GetValue(section);
                     IList windows = (IList)index.GetValue(1);
-                    Require(windows != null && windows.Count > 0 && windows.Count <= 2, "Role candidate lost before filtering: " + Roles[i]);
+                    int limit = Roles[i] == "F1c" || Roles[i] == "B1c" ? 4 : 2;
+                    Require(windows != null && windows.Count > 0 && windows.Count <= limit, "Role candidate lost before filtering: " + Roles[i]);
                     bool found = false;
                     foreach (object window in windows)
                     {
