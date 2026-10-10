@@ -318,19 +318,39 @@ namespace RpaDesigner
                 }
                 ExactMarks(ordering, expected);
                 HighlightedReport details = LampReportWriter.HighlightedSet(set, result); expected.Clear(); start = 0;
-                foreach (string row in details.Text.Split('\n'))
+                foreach (LampOligo oligo in oligos)
                 {
-                    foreach (LampOligo oligo in oligos) if (row == oligo.Sequence && oligo.SnpIndex >= 0) expected.Add(start + oligo.SnpIndex);
-                    if (result.Snp != null && (row == set.ReferenceTemplate || row == set.AlternateTemplate)) expected.Add(start + result.Snp.Position - set.SpanStart);
-                    start += row.Length + 1;
+                    int sequenceStart = SequenceLineStart(details.Text, oligo.OrderingSequence, ref start);
+                    if (oligo.OrderingSnpIndex >= 0) expected.Add(sequenceStart + oligo.OrderingSnpIndex);
+                    if (oligo.Regions.Count > 1) foreach (LampOligoPart part in LampReportWriter.OligoParts(oligo))
+                    {
+                        sequenceStart = SequenceLineStart(details.Text, part.Sequence, ref start);
+                        int relative = oligo.OrderingSnpIndex - part.OrderingOffset;
+                        if (oligo.OrderingSnpIndex >= 0 && relative >= 0 && relative < part.Sequence.Length) expected.Add(sequenceStart + relative);
+                    }
                 }
-                ExactMarks(details, expected); Require(expected.Count == (result.Snp == null ? 0 : 4), "Expected exact primer/template SNP marks.");
+                int templateStart = SequenceLineStart(details.Text, set.ReferenceTemplate, ref start);
+                if (result.Snp != null)
+                {
+                    expected.Add(templateStart + result.Snp.Position - set.SpanStart);
+                    templateStart = SequenceLineStart(details.Text, set.AlternateTemplate, ref start);
+                    expected.Add(templateStart + result.Snp.Position - set.SpanStart);
+                }
+                ExactMarks(details, expected); Require(expected.Count == (result.Snp == null ? 0 : 6), "Expected full-primer, component and template SNP marks.");
             }
             string html = LampReportWriter.Html(result); var dnaBlocks = Regex.Matches(html, "<pre class=\"dna\">(.*?)</pre>", RegexOptions.Singleline);
             var sequences = new List<string>(); var indices = new List<int>();
             foreach (LampPrimerSet set in result.Sets)
             {
-                foreach (LampOligo oligo in LampReportWriter.Oligos(set)) { sequences.Add(oligo.Sequence); indices.Add(oligo.SnpIndex); }
+                foreach (LampOligo oligo in LampReportWriter.Oligos(set))
+                {
+                    sequences.Add(oligo.OrderingSequence); indices.Add(oligo.OrderingSnpIndex);
+                    if (oligo.Regions.Count > 1) foreach (LampOligoPart part in LampReportWriter.OligoParts(oligo))
+                    {
+                        sequences.Add(part.Sequence); int relative = oligo.OrderingSnpIndex - part.OrderingOffset;
+                        indices.Add(oligo.OrderingSnpIndex >= 0 && relative >= 0 && relative < part.Sequence.Length ? relative : -1);
+                    }
+                }
                 sequences.Add(set.ReferenceTemplate); indices.Add(result.Snp == null ? -1 : result.Snp.Position - set.SpanStart);
                 if (result.Snp != null) { sequences.Add(set.AlternateTemplate); indices.Add(result.Snp.Position - set.SpanStart); }
             }
@@ -350,6 +370,16 @@ namespace RpaDesigner
             var actual = new HashSet<int>(); foreach (ReportHighlight mark in value.SnpHighlights)
             { Require(mark.Length == 1 && mark.Start >= 0 && mark.Start < value.Text.Length, "Highlight must be one actual sequence base."); Require(actual.Add(mark.Start), "Duplicate highlight."); }
             Require(actual.SetEquals(expected), "SNP character offsets differ from sequence-derived positions.");
+        }
+        private static int SequenceLineStart(string text, string sequence, ref int cursor)
+        {
+            while (cursor < text.Length)
+            {
+                int lineStart = cursor, lineEnd = text.IndexOf('\n', cursor); if (lineEnd < 0) lineEnd = text.Length;
+                cursor = lineEnd + 1;
+                if (text.Substring(lineStart, lineEnd - lineStart) == sequence) return lineStart;
+            }
+            throw new InvalidOperationException("Detailed report lost or reordered sequence: " + sequence);
         }
         private static List<string[]> ParseCsv(string value)
         {

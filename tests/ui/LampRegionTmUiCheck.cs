@@ -80,7 +80,7 @@ internal static class LampRegionTmUiCheck
                     }
                 }
                 Check(!form.Visible,"Test never shows a desktop window.");
-                Check(!Field<CheckBox>(form,"blastEnabled").Checked,"Online BLAST remains disabled by default.");
+                Check(!Field<Button>(form,"blastRun").Enabled && Field<TextBox>(form,"blastXmlFile").TextLength == 0,"Manual BLAST requires explicit file selection.");
             }
         }
         catch(Exception ex){errors.Add(ex.ToString());}

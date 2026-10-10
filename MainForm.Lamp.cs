@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.IO;
 using System.Text;
@@ -122,10 +122,10 @@ namespace RpaDesigner
             {
                 using(var box=new RichTextBox {Font=new Font("Consolas",12F),ForeColor=ink})
                 {
-                    var report=LampReportWriter.HighlightedOrderingText(set,lampResult);ApplyHighlights(box,report,"");
+                    var report=LampReportWriter.HighlightedGroupCopyText(set,lampResult);ApplyHighlights(box,report,"");
                     var data=new DataObject();data.SetData(DataFormats.UnicodeText,report.Text);data.SetData(DataFormats.Rtf,box.Rtf);Clipboard.SetDataObject(data,true);
                 }
-                status.Text="已复制此组全部 LAMP 引物（5′→3′）；富文本可保留 SNP 红色"+(LampReportWriter.IsMLamp(lampResult)?"及人为错配蓝色":"");
+                status.Text="已复制此组全部 LAMP 引物及组成区段（5′→3′）；富文本可保留 SNP 红色"+(LampReportWriter.IsMLamp(lampResult)?"及人为错配蓝色":"");
             }
             catch(Exception ex){MessageBox.Show(this,ex.Message,"复制失败");}
         }

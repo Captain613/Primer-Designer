@@ -138,17 +138,38 @@ internal static class MLampUiCheck
     }
     private static void CheckCopy(MainForm form, LampPrimerSet set, LampDesignResult result)
     {
-        HighlightedReport report = LampReportWriter.HighlightedOrderingText(set, result);
+        HighlightedReport report = LampReportWriter.HighlightedGroupCopyText(set, result);
+        string[] lines = report.Text.Split('\n');
+        Check(lines.Length > 2 && lines[0] == "此组 LAMP 引物 · 全部序列 5′→3′" && lines[1].Contains("不是额外订购引物"), "Group copy identifies the 5′→3′ direction and explains component rows.");
+        var expected = new HashSet<int>(); var expectedBlue = new HashSet<int>();
+        int row = 2, start = lines[0].Length + lines[1].Length + 2;
+        foreach (LampOligo p in LampReportWriter.Oligos(set))
+        {
+            string name = "mLAMP_" + set.Rank + "_" + LampReportWriter.OligoName(p, set, result);
+            int blueIndex = p.SnpIndex >= 0 && result.Settings.ExtraMismatchFromThreePrime > 0 ? p.Sequence.Length - result.Settings.ExtraMismatchFromThreePrime : -1;
+            CheckCopyRow(lines, ref row, ref start, name, p.OrderingSequence, p.OrderingSnpIndex, blueIndex, expected, expectedBlue);
+            if (p.Regions.Count <= 1) continue;
+            string assembled = "";
+            foreach (LampOligoPart part in LampReportWriter.OligoParts(p))
+            {
+                CheckCopyRow(lines, ref row, ref start, name + "_组成_" + part.Name + " (5′→3′)", part.Sequence,
+                    LampReportWriter.PartIndex(part, p.OrderingSnpIndex), LampReportWriter.PartIndex(part, blueIndex), expected, expectedBlue);
+                assembled += part.Sequence;
+            }
+            Check(assembled == p.OrderingSequence, name + " copied component rows reconstruct its complete DNA with the chosen artificial mismatch.");
+        }
+        Check(row == lines.Length, "mLAMP group copy contains exactly complete primers and ordered components, without template sequences or extra rows.");
+        var actualRed = new HashSet<int>(); foreach (ReportHighlight mark in report.SnpHighlights) { Check(mark.Length == 1, "mLAMP copy marks one SNP character per occurrence."); actualRed.Add(mark.Start); }
+        var actualBlue = new HashSet<int>(); foreach (ReportHighlight mark in report.MismatchHighlights) { Check(mark.Length == 1, "mLAMP copy marks one mismatch character per occurrence."); actualBlue.Add(mark.Start); }
+        Check(expected.SetEquals(actualRed) && expectedBlue.SetEquals(actualBlue), "mLAMP copy highlight offsets correspond to SNP and mismatch bases in each complete primer and component.");
         using (var source = new RichTextBox()) using (var pasted = new RichTextBox())
         {
             typeof(MainForm).GetMethod("ApplyHighlights", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { source, report, "" });
             var data = new DataObject(); data.SetData(DataFormats.UnicodeText, source.Text); data.SetData(DataFormats.Rtf, source.Rtf);
             pasted.Rtf = (string)data.GetData(DataFormats.Rtf);
-            Check(pasted.Text == report.Text && ((string)data.GetData(DataFormats.UnicodeText)).StartsWith("mLAMP_", StringComparison.Ordinal), "Copy payload preserves mLAMP names and complete DNA.");
-            var expected = new HashSet<int>(); foreach (ReportHighlight mark in report.SnpHighlights) expected.Add(mark.Start);
-            var expectedBlue = new HashSet<int>(); foreach (ReportHighlight mark in report.MismatchHighlights) expectedBlue.Add(mark.Start);
-            Check(expected.Count == 2, "Copy highlights exactly the two true SNP termini.");
-            Check(expectedBlue.Count == (result.Settings.ExtraMismatchFromThreePrime == 0 ? 0 : 2), "Copy highlights the artificial base of both FIP alleles only when enabled.");
+            Check(pasted.Text == report.Text && (string)data.GetData(DataFormats.UnicodeText) == report.Text, "Copy payload preserves the header, mLAMP names, complete DNA and all component rows in Unicode and RTF.");
+            Check(expected.Count == 4, "Copy highlights each allele-specific SNP in the complete FIP and its F2 component.");
+            Check(expectedBlue.Count == (result.Settings.ExtraMismatchFromThreePrime == 0 ? 0 : 4), "Copy highlights each artificial base in the complete FIP and its F2 component only when enabled.");
             bool correctColors = true;
             for (int i = 0; i < pasted.TextLength; i++)
             {
@@ -158,6 +179,15 @@ internal static class MLampUiCheck
             }
             Check(correctColors, "Copied RTF preserves exact SNP red and artificial-mismatch blue positions after a rich-text round trip.");
         }
+    }
+    private static void CheckCopyRow(string[] lines, ref int row, ref int start, string name, string sequence, int snpIndex, int mismatchIndex, HashSet<int> redPositions, HashSet<int> bluePositions)
+    {
+        string expectedLine = name + "\t" + sequence;
+        Check(row < lines.Length && lines[row] == expectedLine, "Copied group row " + name + " preserves its parent name, 5′→3′ sequence and component order.");
+        int sequenceStart = start + name.Length + 1;
+        if (snpIndex >= 0) redPositions.Add(sequenceStart + snpIndex);
+        if (mismatchIndex >= 0) bluePositions.Add(sequenceStart + mismatchIndex);
+        start += expectedLine.Length + 1; row++;
     }
     private static void CheckResultCards(MainForm form, LampDesignResult result)
     {
@@ -171,7 +201,20 @@ internal static class MLampUiCheck
             {
                 Check(p.RnaIndex < 0 && String.IsNullOrEmpty(p.ThreePrimeBlock) && p.Sequence == p.OrderingSequence, "mLAMP card uses ordinary DNA without RNA/C3 modifications.");
                 int blueIndex = p.SnpIndex >= 0 && offset > 0 ? p.Sequence.Length - offset : -1;
-                CheckBox(view, "primer_" + LampReportWriter.OligoName(p, set, result), p.Sequence, p.SnpIndex, blueIndex);
+                string oligoName=LampReportWriter.OligoName(p,set,result);
+                string name="primer_"+oligoName;
+                CheckBox(view,name,p.Sequence,p.SnpIndex,blueIndex);
+                if(p.Regions.Count<=1)continue;
+                var parts=LampReportWriter.OligoParts(p);string assembled="";
+                for(int partNumber=0;partNumber<parts.Count;partNumber++)
+                {
+                    LampOligoPart part=parts[partNumber];string partName=name+"_part_"+(partNumber+1);
+                    CheckBox(view,partName,part.Sequence,LampReportWriter.PartIndex(part,p.OrderingSnpIndex),LampReportWriter.PartIndex(part,blueIndex));
+                    RichTextBox component=Named<RichTextBox>(view,partName);assembled+=component.Text;
+                    Check(component.AccessibleName.Contains(oligoName)&&component.AccessibleName.Contains(part.Name)&&component.AccessibleName.Contains("5′→3′"),partName+" exposes a clearly associated region and synthesis direction.");
+                }
+                Check(assembled==p.OrderingSequence,name+" component cards reconstruct the actual DNA with the chosen artificial mismatch.");
+                Check(view.Controls.Find(name+"_part_"+(parts.Count+1),true).Length==0,name+" has exactly the expected component cards.");
             }
             CheckBox(view, "template_ref", set.ReferenceTemplate, result.Snp.Position - set.SpanStart, -1);
             CheckBox(view, "template_alt", set.AlternateTemplate, result.Snp.Position - set.SpanStart, -1);

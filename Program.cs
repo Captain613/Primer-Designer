@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -6,9 +6,9 @@ using System.Windows.Forms;
 using System.Reflection;
 
 [assembly: AssemblyTitle("RPA / LAMP 引物设计助手")]
-[assembly: AssemblyDescription("RPA and LAMP primer designer with optional NCBI BLAST screening")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyDescription("RPA and LAMP primer designer with manual BLAST batch review")]
+[assembly: AssemblyVersion("1.0.6.0")]
+[assembly: AssemblyFileVersion("1.0.6.0")]
 
 namespace RpaDesigner
 {
@@ -35,6 +35,7 @@ namespace RpaDesigner
                 if (args.Length == 2 && args[0] == "--snp-self-test") return SnpSelfTests.Run(args[1]);
                 if (args.Length == 2 && args[0] == "--highlight-self-test") return HighlightSelfTests.Run(args[1]);
                 if (args.Length == 2 && args[0] == "--lamp-self-test") return LampSelfTests.Run(args[1]);
+                if (args.Length == 2 && args[0] == "--lamp-parts-self-test") return LampPartsSelfTests.Run(args[1]);
                 if (args.Length == 2 && args[0] == "--lamp-region-tm-self-test") return LampRegionTmSelfTests.Run(args[1]);
                 if (args.Length == 2 && args[0] == "--lamp-thermodynamics-self-test") return LampThermodynamicsSelfTests.Run(args[1]);
                 if (args.Length == 2 && args[0] == "--pa-lamp-self-test") return PaLampSelfTests.Run(args[1]);
@@ -43,6 +44,7 @@ namespace RpaDesigner
                 if (args.Length == 2 && args[0] == "--unlimited-lamp-self-test") return UnlimitedLampSelfTests.Run(args[1]);
                 if (args.Length == 2 && args[0] == "--blast-online-self-test") return BlastOnlineSelfTests.Run(args[1]);
                 if (args.Length == 2 && args[0] == "--blast-analysis-self-test") return BlastAnalysisSelfTests.Run(args[1]);
+                if (args.Length == 2 && args[0] == "--blast-manual-self-test") return BlastManualSelfTests.Run(args[1]);
                 if (args.Length == 2 && args[0] == "--mlamp-demo-report")
                 {
                     var mlamp = LampDesignEngine.DesignSnp(SnpParser.Parse(LampReportWriter.ExampleSnpFasta()),

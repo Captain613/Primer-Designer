@@ -177,15 +177,25 @@ namespace RpaDesigner
                 foreach (LampPrimerSet set in fixture.Sets)
                 {
                     HighlightedReport report = LampReportWriter.HighlightedSet(set, fixture);
-                    var expected = new HashSet<int>(); int lineStart = 0;
-                    foreach (string row in report.Text.Split('\n'))
+                    var expected = new HashSet<int>(); int cursor = 0;
+                    foreach (LampOligo oligo in LampReportWriter.Oligos(set))
                     {
-                        foreach (LampOligo oligo in LampReportWriter.Oligos(set))
-                            if (row == oligo.OrderingSequence && oligo.OrderingSnpIndex >= 0) expected.Add(lineStart + oligo.OrderingSnpIndex);
-                        if (row == set.ReferenceTemplate || row == set.AlternateTemplate) expected.Add(lineStart + fixture.Snp.Position - set.SpanStart);
-                        lineStart += row.Length + 1;
+                        int sequenceStart = SequenceLineStart(report.Text, oligo.OrderingSequence, ref cursor);
+                        if (oligo.OrderingSnpIndex >= 0) expected.Add(sequenceStart + oligo.OrderingSnpIndex);
+                        if (oligo.Regions.Count > 1) foreach (LampOligoPart part in LampReportWriter.OligoParts(oligo))
+                        {
+                            sequenceStart = SequenceLineStart(report.Text, part.Sequence, ref cursor);
+                            int relative = oligo.OrderingSnpIndex - part.OrderingOffset;
+                            if (oligo.OrderingSnpIndex >= 0 && relative >= 0 && relative < part.Sequence.Length) expected.Add(sequenceStart + relative);
+                            string partMarked = part.Sequence;
+                            if (oligo.OrderingSnpIndex >= 0 && relative >= 0 && relative < partMarked.Length)
+                                partMarked = partMarked.Substring(0, relative) + "<span class=\"snp\">" + partMarked[relative] + "</span>" + partMarked.Substring(relative + 1);
+                            Require(html.Contains("<pre class=\"dna\">" + partMarked + "</pre>"), "HTML lost a PA component or marked the wrong RNA character.");
+                        }
                     }
-                    Require(expected.Count == 4, "Set report must mark two RNA bases and two original-template SNP bases."); ExactMarks(report, expected);
+                    expected.Add(SequenceLineStart(report.Text, set.ReferenceTemplate, ref cursor) + fixture.Snp.Position - set.SpanStart);
+                    expected.Add(SequenceLineStart(report.Text, set.AlternateTemplate, ref cursor) + fixture.Snp.Position - set.SpanStart);
+                    Require(expected.Count == 6, "Set report must mark RNA in both complete primers and components, plus two original-template SNP bases."); ExactMarks(report, expected);
                     foreach (LampOligo oligo in LampReportWriter.Oligos(set))
                     {
                         Require(text.Contains(oligo.OrderingSequence), "TXT lost the complete chemical ordering sequence.");
@@ -429,6 +439,16 @@ namespace RpaDesigner
                 Require(actual.Add(mark.Start), "Duplicate red mark.");
             }
             Require(actual.SetEquals(expected), "Modification-aware SNP highlights differ from expected character positions.");
+        }
+        private static int SequenceLineStart(string text, string sequence, ref int cursor)
+        {
+            while (cursor < text.Length)
+            {
+                int lineStart = cursor, lineEnd = text.IndexOf('\n', cursor); if (lineEnd < 0) lineEnd = text.Length;
+                cursor = lineEnd + 1;
+                if (text.Substring(lineStart, lineEnd - lineStart) == sequence) return lineStart;
+            }
+            throw new InvalidOperationException("Detailed report lost or reordered sequence: " + sequence);
         }
         private static List<string[]> ParseCsv(string value)
         {

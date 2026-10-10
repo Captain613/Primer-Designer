@@ -228,7 +228,9 @@ namespace RpaDesigner
                     ExactMarks(copy, expected);
                     Equal(copy.Text, LampReportWriter.OrderingText(set, fixture).Replace("\r\n", "\n"), "Copy plain-text fallback");
                     HighlightedReport detail = LampReportWriter.HighlightedSet(set, fixture);
-                    Require(detail.SnpHighlights.Count == 4, "Detail report must mark two FIP termini and two native template SNP bases.");
+                    HashSet<int> detailRed = DetailMarks(detail, set, fixture, false);
+                    Require(detailRed.Count == 6, "Detail report must mark SNP in complete FIPs, F2 components and native templates.");
+                    ExactSnpMarks(detail, detailRed);
                 }
                 var all = new List<LampOligo>(); foreach (LampPrimerSet set in fixture.Sets) all.AddRange(LampReportWriter.Oligos(set));
                 string[] fasta = LampReportWriter.Fasta(fixture).Replace("\r", "").TrimEnd('\n').Split('\n');
@@ -385,7 +387,12 @@ namespace RpaDesigner
         }
         private static void ExactMarks(HighlightedReport report, HashSet<int> expected)
         {
-            Require(expected.Count == 2 && report.SnpHighlights.Count == expected.Count, "Only two true allele SNP bases should be highlighted in copy text.");
+            Require(expected.Count == 2, "Only two true allele SNP bases should be highlighted in copy text.");
+            ExactSnpMarks(report, expected);
+        }
+        private static void ExactSnpMarks(HighlightedReport report, HashSet<int> expected)
+        {
+            Require(report.SnpHighlights.Count == expected.Count, "Wrong number of SNP highlights.");
             foreach (ReportHighlight mark in report.SnpHighlights)
                 Require(mark.Length == 1 && expected.Remove(mark.Start), "Wrong or duplicate SNP highlight.");
             Require(expected.Count == 0, "Missing SNP highlight.");
@@ -393,21 +400,17 @@ namespace RpaDesigner
         private static void ValidateHighlights(LampDesignResult r, int offset)
         {
             string html = LampReportWriter.Html(r);
-            int perSet = offset == 0 ? 0 : 2;
-            int htmlBlue = 0;
-            foreach (Match dna in Regex.Matches(html, "<pre class=\"dna\">(.*?)</pre>", RegexOptions.Singleline))
-                htmlBlue += Regex.Matches(dna.Groups[1].Value, "<span class=\"mismatch\">").Count;
-            Require(htmlBlue == perSet * r.Sets.Count,
-                "HTML must color only the artificial base of both FIP alleles, never native templates.");
+            MatchCollection dnaBlocks = Regex.Matches(html, "<pre class=\"dna\">(.*?)</pre>", RegexOptions.Singleline);
+            int htmlCursor = 0, perSet = offset == 0 ? 0 : 4;
             HighlightedReport full = LampReportWriter.HighlightedTextReport(r);
-            var fullBlue = new HashSet<int>();
+            var fullBlue = new HashSet<int>(); var fullRed = new HashSet<int>(); int fullCursor = 0;
             Require(full.MismatchHighlights.Count == perSet * r.Sets.Count, "Combined report lost or duplicated artificial-mismatch highlights.");
-            Require(full.SnpHighlights.Count == r.Sets.Count * 4 + 2, "Combined report must preserve all primer and native-template SNP highlights.");
+            Require(full.SnpHighlights.Count == r.Sets.Count * 6 + 2, "Combined report must preserve all complete-primer, component and template SNP highlights.");
             foreach (LampPrimerSet set in r.Sets)
             {
                 HighlightedReport copy = LampReportWriter.HighlightedOrderingText(set, r);
                 HighlightedReport detail = LampReportWriter.HighlightedSet(set, r);
-                var red = new HashSet<int>(); var blue = new HashSet<int>(); var detailBlue = new HashSet<int>(); int cursor = 0;
+                var red = new HashSet<int>(); var blue = new HashSet<int>(); int cursor = 0;
                 string[] rows = copy.Text.Split('\n'); List<LampOligo> oligos = LampReportWriter.Oligos(set);
                 for (int i = 0; i < oligos.Count; i++)
                 {
@@ -419,28 +422,77 @@ namespace RpaDesigner
                     if (mismatchIndex >= 0)
                     {
                         blue.Add(cursor + tab + 1 + mismatchIndex);
-                        string prefix = LampReportWriter.OligoName(p, set, r) + " 5′→3′\n";
-                        int start = detail.Text.IndexOf(prefix, StringComparison.Ordinal);
-                        Require(start >= 0, "Detail report lost an allele FIP sequence heading.");
-                        detailBlue.Add(start + prefix.Length + mismatchIndex);
                     }
-                    Require(html.Contains("<pre class=\"dna\">" + MarkedSequence(p.Sequence, p.SnpIndex, mismatchIndex) + "</pre>"),
-                        "HTML colored sequence disagrees with the selected mismatch offset.");
+                    ExpectedHtmlSequence(dnaBlocks, ref htmlCursor, p.OrderingSequence, p.OrderingSnpIndex, mismatchIndex);
+                    if (p.Regions.Count > 1) foreach (LampOligoPart part in LampReportWriter.OligoParts(p))
+                    {
+                        int partRed = RelativeIndex(part, p.OrderingSnpIndex), partBlue = RelativeIndex(part, mismatchIndex);
+                        ExpectedHtmlSequence(dnaBlocks, ref htmlCursor, part.Sequence, partRed, partBlue);
+                    }
                     cursor += rows[i].Length + 1;
                 }
                 ExactMarks(copy, red);
                 ExactMismatchMarks(copy, blue);
                 int detailStart = full.Text.IndexOf(detail.Text, StringComparison.Ordinal);
                 Require(detailStart >= 0, "Combined report lost a candidate's detailed report.");
+                HashSet<int> detailBlue = DetailMarks(detail, set, r, true), detailRed = DetailMarks(detail, set, r, false);
                 foreach (int position in detailBlue) fullBlue.Add(detailStart + position);
+                foreach (int position in detailRed) fullRed.Add(detailStart + position);
+                fullCursor = detailStart + detail.Text.Length;
                 ExactMismatchMarks(detail, detailBlue);
-                Require(detail.SnpHighlights.Count == 4, "Detail must retain SNP red in both FIPs and both native templates.");
+                Require(detailRed.Count == 6, "Detail must retain red SNP in complete FIPs, F2 components and native templates."); ExactSnpMarks(detail, detailRed);
                 int templateIndex = r.Snp.Position - set.SpanStart;
-                Require(html.Contains("<pre class=\"dna\">" + MarkedSequence(set.ReferenceTemplate, templateIndex, -1) + "</pre>")
-                    && html.Contains("<pre class=\"dna\">" + MarkedSequence(set.AlternateTemplate, templateIndex, -1) + "</pre>"),
-                    "Native template HTML must not acquire artificial bases or blue marks.");
+                ExpectedHtmlSequence(dnaBlocks, ref htmlCursor, set.ReferenceTemplate, templateIndex, -1);
+                ExpectedHtmlSequence(dnaBlocks, ref htmlCursor, set.AlternateTemplate, templateIndex, -1);
             }
+            fullRed.Add(SequenceLineStart(full.Text, r.Input.Sequence, ref fullCursor) + r.Snp.Position - 1);
+            fullRed.Add(SequenceLineStart(full.Text, r.Snp.Alternate.Sequence, ref fullCursor) + r.Snp.Position - 1);
+            ExactSnpMarks(full, fullRed);
             ExactMismatchMarks(full, fullBlue);
+            ExpectedHtmlSequence(dnaBlocks, ref htmlCursor, r.Input.Sequence, r.Snp.Position - 1, -1);
+            ExpectedHtmlSequence(dnaBlocks, ref htmlCursor, r.Snp.Alternate.Sequence, r.Snp.Position - 1, -1);
+            Require(htmlCursor == dnaBlocks.Count, "HTML emitted unexpected sequence blocks.");
+        }
+        private static HashSet<int> DetailMarks(HighlightedReport report, LampPrimerSet set, LampDesignResult r, bool mismatch)
+        {
+            var expected = new HashSet<int>(); int cursor = 0;
+            foreach (LampOligo p in LampReportWriter.Oligos(set))
+            {
+                int index = mismatch ? (p.SnpIndex >= 0 && r.Settings.ExtraMismatchFromThreePrime > 0 ? p.Sequence.Length - r.Settings.ExtraMismatchFromThreePrime : -1) : p.OrderingSnpIndex;
+                int sequenceStart = SequenceLineStart(report.Text, p.OrderingSequence, ref cursor);
+                if (index >= 0) expected.Add(sequenceStart + index);
+                if (p.Regions.Count > 1) foreach (LampOligoPart part in LampReportWriter.OligoParts(p))
+                {
+                    sequenceStart = SequenceLineStart(report.Text, part.Sequence, ref cursor);
+                    int relative = RelativeIndex(part, index); if (relative >= 0) expected.Add(sequenceStart + relative);
+                }
+            }
+            int templateStart = SequenceLineStart(report.Text, set.ReferenceTemplate, ref cursor);
+            if (!mismatch) expected.Add(templateStart + r.Snp.Position - set.SpanStart);
+            templateStart = SequenceLineStart(report.Text, set.AlternateTemplate, ref cursor);
+            if (!mismatch) expected.Add(templateStart + r.Snp.Position - set.SpanStart);
+            return expected;
+        }
+        private static int RelativeIndex(LampOligoPart part, int index)
+        {
+            int relative = index - part.OrderingOffset;
+            return index >= 0 && relative >= 0 && relative < part.Sequence.Length ? relative : -1;
+        }
+        private static int SequenceLineStart(string text, string sequence, ref int cursor)
+        {
+            while (cursor < text.Length)
+            {
+                int lineStart = cursor, lineEnd = text.IndexOf('\n', cursor); if (lineEnd < 0) lineEnd = text.Length;
+                cursor = lineEnd + 1;
+                if (text.Substring(lineStart, lineEnd - lineStart) == sequence) return lineStart;
+            }
+            throw new InvalidOperationException("Detailed report lost or reordered sequence: " + sequence);
+        }
+        private static void ExpectedHtmlSequence(MatchCollection blocks, ref int cursor, string sequence, int snpIndex, int mismatchIndex)
+        {
+            Require(cursor < blocks.Count, "HTML lost a sequence block.");
+            Equal(MarkedSequence(sequence, snpIndex, mismatchIndex), blocks[cursor++].Groups[1].Value,
+                "HTML ordered sequence and SNP/mismatch coloring");
         }
         private static void ExactMismatchMarks(HighlightedReport report, HashSet<int> expected)
         {

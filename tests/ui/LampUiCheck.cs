@@ -18,6 +18,7 @@ internal static class LampUiCheck
     private static readonly List<string> layout = new List<string>();
     private static Exception dispatchError;
     private static readonly Color red = Color.FromArgb(211,47,47);
+    private static readonly Color blue = Color.FromArgb(37,99,235);
     private static float dpi;
     private static bool baseline;
     private static int checks;
@@ -181,7 +182,7 @@ internal static class LampUiCheck
                     CheckClearedLampMap(view,"Changing inputs after the RPA result");
                     form.Size=normal;LayoutTree(form);Application.DoEvents();
                     Render(form,Path.Combine(output,"lamp-input.png"));
-                    notes.Add("Result cases exercised: RPA SNP and AS/PA-LAMP candidates with exact per-character SNP coloring; RNA/C3 order text and RTF copy-payload round-trip; LAMP map candidate binding and positive map/detail viewports on three tabs at default/minimum size; ordinary design after PA with no residual SNP color or LAMP map state.");
+                    notes.Add("Result cases exercised: RPA SNP and AS/PA-LAMP candidates with exact per-character SNP/mismatch coloring; ordered, individually copyable component cards reconstruct each full FIP/BIP; RNA/C3 order text and RTF copy-payload round-trip; LAMP map candidate binding and positive map/detail viewports on three tabs at default/minimum size; ordinary design after PA with no residual SNP color or LAMP map state.");
                 }
                 Check(!form.Visible,"No desktop window was displayed during testing.");
             }
@@ -319,8 +320,30 @@ internal static class LampUiCheck
         var expected=new List<string>();
         foreach(var p in LampReportWriter.Oligos(set))
         {
-            string name="primer_"+LampReportWriter.OligoName(p,set,r);expected.Add(name);
-            CheckBox(view,name,p.OrderingSequence,p.OrderingSnpIndex);
+            string oligoName=LampReportWriter.OligoName(p,set,r);
+            string name="primer_"+oligoName;expected.Add(name);
+            int mismatchIndex=LampReportWriter.MismatchIndex(p,set,r);
+            CheckBox(view,name,p.OrderingSequence,p.OrderingSnpIndex,mismatchIndex);
+            var complete=Named<RichTextBox>(view,name);
+            if(p.Regions.Count<=1)
+            {
+                Check(view.Controls.Find(name+"_part_1",true).Length==0,name+" stays a single complete-sequence card.");
+                continue;
+            }
+            var parts=LampReportWriter.OligoParts(p);string assembled="";
+            int completeIndex=complete.Parent.Parent.Controls.GetChildIndex(complete.Parent);
+            for(int i=0;i<parts.Count;i++)
+            {
+                LampOligoPart part=parts[i];string partName=name+"_part_"+(i+1);expected.Add(partName);
+                CheckBox(view,partName,part.Sequence,LampReportWriter.PartIndex(part,p.OrderingSnpIndex),LampReportWriter.PartIndex(part,mismatchIndex));
+                var partBox=Named<RichTextBox>(view,partName);assembled+=partBox.Text;
+                Check(partBox.AccessibleName.Contains(oligoName)&&partBox.AccessibleName.Contains(part.Name)&&partBox.AccessibleName.Contains("5′→3′"),partName+" identifies its parent primer, role and synthesis direction.");
+                Check(partBox.Parent.Parent==complete.Parent.Parent&&partBox.Parent.Parent.Controls.GetChildIndex(partBox.Parent)==completeIndex+i+1,partName+" immediately follows its complete primer in 5′→3′ component order.");
+                bool copyable=false;foreach(Control child in partBox.Parent.Controls)if(child is Button&&child.Text=="复制序列")copyable=true;
+                Check(copyable,partName+" provides its own copy button.");
+            }
+            Check(assembled==p.OrderingSequence,name+" displayed components reconstruct the full ordering sequence including modifications.");
+            Check(view.Controls.Find(name+"_part_"+(parts.Count+1),true).Length==0,name+" has exactly the expected component cards.");
         }
         CheckBox(view,"template_ref",set.ReferenceTemplate,r.Snp==null?-1:r.Snp.Position-set.SpanStart);
         if(r.Snp!=null)CheckBox(view,"template_alt",set.AlternateTemplate,r.Snp.Position-set.SpanStart);
@@ -331,7 +354,7 @@ internal static class LampUiCheck
         Check(!OwnVisible(Field<Control>(view,"diagram")),"The RPA AmpliconView stays hidden for LAMP results.");
         Check(Object.ReferenceEquals(Field<LampPrimerSet>(map,"selectedSet"),set)&&Object.ReferenceEquals(Field<LampDesignResult>(map,"selectedResult"),r),"LAMP map binds the same selected candidate and result as the sequence cards.");
         Check(MapTemplateLength(map)==r.Input.Sequence.Length,"LAMP map receives the full input-template length.");
-        if(LampReportWriter.IsPa(r))CheckPaCopy(set,r);
+        CheckGroupCopy(set,r);
         notes.Add("Checked LAMP candidate #"+set.Rank+" direction="+set.SpecificInner+" oligos="+expected.Count+" exact SNP colors.");
     }
     private static void CheckLampViewport(Control view,string state)
@@ -388,30 +411,63 @@ internal static class LampUiCheck
         Check(MapTemplateLength(map)==0&&Field<LampPrimerSet>(map,"selectedSet")==null&&Field<LampDesignResult>(map,"selectedResult")==null,state+" clears prior LAMP candidate and template state.");
     }
     private static int MapTemplateLength(Control map){return (int)map.GetType().GetProperty("TemplateLength",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic).GetValue(map,null);}
-    private static void CheckPaCopy(LampPrimerSet set,LampDesignResult r)
+    private static void CheckGroupCopy(LampPrimerSet set,LampDesignResult r)
     {
-        HighlightedReport report=LampReportWriter.HighlightedOrderingText(set,r);
+        HighlightedReport report=LampReportWriter.HighlightedGroupCopyText(set,r);
+        string mode=LampReportWriter.IsPa(r)?"PA-LAMP":r.Snp==null?"LAMP":"AS-LAMP";
+        string[] lines=report.Text.Split('\n');
+        Check(lines.Length>2&&lines[0]=="此组 LAMP 引物 · 全部序列 5′→3′"&&lines[1].Contains("不是额外订购引物"),mode+" group copy identifies synthesis direction and explains component rows.");
+        var expected=new HashSet<int>();var expectedBlue=new HashSet<int>();
+        int row=2,start=lines[0].Length+lines[1].Length+2;
+        foreach(LampOligo p in LampReportWriter.Oligos(set))
+        {
+            string name=mode+"_"+set.Rank+"_"+LampReportWriter.OligoName(p,set,r);
+            CheckCopyRow(lines,ref row,ref start,name,p.OrderingSequence,p.OrderingSnpIndex,-1,expected,expectedBlue);
+            if(p.Regions.Count<=1)continue;
+            string assembled="";
+            foreach(LampOligoPart part in LampReportWriter.OligoParts(p))
+            {
+                CheckCopyRow(lines,ref row,ref start,name+"_组成_"+part.Name+" (5′→3′)",part.Sequence,
+                    LampReportWriter.PartIndex(part,p.OrderingSnpIndex),-1,expected,expectedBlue);
+                assembled+=part.Sequence;
+            }
+            Check(assembled==p.OrderingSequence,mode+" copied components reconstruct "+name+" including chemical modifications.");
+        }
+        Check(row==lines.Length,mode+" group copy contains exactly complete primers and their components, without templates or extra rows.");
+        var actualRed=new HashSet<int>();foreach(var mark in report.SnpHighlights){Check(mark.Length==1,mode+" SNP copy highlight marks one character.");actualRed.Add(mark.Start);}
+        var actualBlue=new HashSet<int>();foreach(var mark in report.MismatchHighlights)actualBlue.Add(mark.Start);
+        Check(expected.SetEquals(actualRed)&&expectedBlue.SetEquals(actualBlue),mode+" copy highlight offsets correspond to the complete and component sequence rows.");
+        Check(expected.Count==(r.Snp==null?0:4),mode+" copy highlights each allele-specific SNP once in the complete primer and once in its component.");
         using(var source=new RichTextBox())using(var pasted=new RichTextBox())
         {
             typeof(MainForm).GetMethod("ApplyHighlights",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[]{source,report,""});
             var data=new DataObject();data.SetData(DataFormats.UnicodeText,source.Text);data.SetData(DataFormats.Rtf,source.Rtf);
-            Check((string)data.GetData(DataFormats.UnicodeText)==report.Text,"PA copy payload retains complete modified ordering text.");
+            Check((string)data.GetData(DataFormats.UnicodeText)==report.Text,mode+" Unicode copy payload retains complete primers and component rows.");
             pasted.Rtf=(string)data.GetData(DataFormats.Rtf);
-            Check(pasted.Text==report.Text,"PA rich-text copy round-trip retains RNA and C3 annotations.");
-            var expected=new HashSet<int>();foreach(var mark in report.SnpHighlights)expected.Add(mark.Start);
+            Check(pasted.Text==report.Text,mode+" rich-text copy round-trip retains all sequence rows, synthesis direction and chemical annotations.");
+            bool correctColors=true;
             for(int i=0;i<pasted.TextLength;i++)
             {
                 pasted.Select(i,1);
-                if((pasted.SelectionColor.ToArgb()==red.ToArgb())!=expected.Contains(i)){errors.Add("PA rich-text copy has incorrect SNP color at "+i);break;}
+                if((pasted.SelectionColor.ToArgb()==red.ToArgb())!=expected.Contains(i)||(pasted.SelectionColor.ToArgb()==blue.ToArgb())!=expectedBlue.Contains(i)){correctColors=false;break;}
             }
-            Check(expected.Count==2,"PA copied candidate group colors only the two allele-specific RNA bases.");
+            Check(correctColors,mode+" rich-text copy preserves exact per-character SNP colors after round-trip.");
         }
     }
-    private static void CheckBox(Control view,string name,string sequence,int snpIndex)
+    private static void CheckCopyRow(string[] lines,ref int row,ref int start,string name,string sequence,int snpIndex,int mismatchIndex,HashSet<int> redPositions,HashSet<int> bluePositions)
+    {
+        string expectedLine=name+"\t"+sequence;
+        Check(row<lines.Length&&lines[row]==expectedLine,"Copied group row "+name+" preserves its parent name, 5′→3′ sequence and component order.");
+        int sequenceStart=start+name.Length+1;
+        if(snpIndex>=0)redPositions.Add(sequenceStart+snpIndex);
+        if(mismatchIndex>=0)bluePositions.Add(sequenceStart+mismatchIndex);
+        start+=expectedLine.Length+1;row++;
+    }
+    private static void CheckBox(Control view,string name,string sequence,int snpIndex,int mismatchIndex=-1)
     {
         var box=Named<RichTextBox>(view,name);
         Check(box.ReadOnly&&box.Text==sequence,name+" contains the complete expected sequence.");
-        for(int i=0;i<box.TextLength;i++){box.Select(i,1);if((box.SelectionColor.ToArgb()==red.ToArgb())!=(i==snpIndex)){errors.Add(name+" wrong SNP color at "+i);break;}}
+        for(int i=0;i<box.TextLength;i++){box.Select(i,1);if((box.SelectionColor.ToArgb()==red.ToArgb())!=(i==snpIndex)||(box.SelectionColor.ToArgb()==blue.ToArgb())!=(i==mismatchIndex)){errors.Add(name+" wrong SNP/mismatch color at "+i);break;}}
         box.Select(0,0);
     }
     private static void Run(MainForm form)

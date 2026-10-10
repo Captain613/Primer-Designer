@@ -77,6 +77,10 @@ Write-Example 'mlamp-demo-report.txt' ([RpaDesigner.LampReportWriter]::TextRepor
 Write-Example 'mlamp-demo-report.html' ([RpaDesigner.LampReportWriter]::Html($mlamp))
 Write-Example 'mlamp-demo-results.csv' ([RpaDesigner.LampReportWriter]::Csv($mlamp))
 Write-Example 'mlamp-demo-primers.fasta' ([RpaDesigner.LampReportWriter]::Fasta($mlamp))
+if ($lamp.Sets.Count -gt 0) { Write-Example 'lamp-demo-group-copy.txt' ([RpaDesigner.LampReportWriter]::GroupCopyText($lamp.Sets[0], $lamp)) }
+if ($lampSnp.Sets.Count -gt 0) { Write-Example 'lamp-snp-demo-group-copy.txt' ([RpaDesigner.LampReportWriter]::GroupCopyText($lampSnp.Sets[0], $lampSnp)) }
+if ($paLamp.Sets.Count -gt 0) { Write-Example 'pa-lamp-demo-group-copy.txt' ([RpaDesigner.LampReportWriter]::GroupCopyText($paLamp.Sets[0], $paLamp)) }
+if ($mlamp.Sets.Count -gt 0) { Write-Example 'mlamp-demo-group-copy.txt' ([RpaDesigner.LampReportWriter]::GroupCopyText($mlamp.Sets[0], $mlamp)) }
 Write-Output ('mLAMP FIP artificial-mismatch candidates: ' + $mlamp.Sets.Count)
 Write-Output ('PA-LAMP modified BIP candidates: ' + $paLamp.Sets.Count)
 Write-Output ('Generated current examples: RPA={0}; RPA SNP={1}; LAMP={2}; LAMP SNP={3}; BIP mismatch={4}' -f $rpa.Pairs.Count, $rpaSnp.Sets.Count, $lamp.Sets.Count, $lampSnp.Sets.Count, $lampMismatch.Sets.Count)

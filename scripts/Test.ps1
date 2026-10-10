@@ -1,4 +1,4 @@
-﻿param([string]$ApplicationPath, [string]$OutputDirectory, [switch]$Ui)
+param([string]$ApplicationPath, [string]$OutputDirectory, [switch]$Ui)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'ProjectConfig.ps1')
 $config = Get-ProjectConfiguration
@@ -36,7 +36,7 @@ try {
         Error = $null
     }
     Save-Summary
-    foreach ($suite in @('self-test', 'snp-self-test', 'highlight-self-test', 'lamp-self-test', 'lamp-region-tm-self-test', 'lamp-thermodynamics-self-test', 'pa-lamp-self-test', 'mlamp-self-test', 'unlimited-rpa-self-test', 'unlimited-lamp-self-test', 'blast-online-self-test', 'blast-analysis-self-test')) {
+    foreach ($suite in @('self-test', 'snp-self-test', 'highlight-self-test', 'lamp-self-test', 'lamp-parts-self-test', 'lamp-region-tm-self-test', 'lamp-thermodynamics-self-test', 'pa-lamp-self-test', 'mlamp-self-test', 'unlimited-rpa-self-test', 'unlimited-lamp-self-test', 'blast-online-self-test', 'blast-analysis-self-test', 'blast-manual-self-test')) {
         Run-HiddenCheck -Executable $application -Arguments @(('--' + $suite), (Join-Path $output ($suite + '-report.txt'))) -ReportPath (Join-Path $output ($suite + '-report.txt')) -Suite $suite
     }
     if ($Ui) {

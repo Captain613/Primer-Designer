@@ -206,10 +206,25 @@ namespace RpaDesigner
             subheading.Text=LampReportWriter.ModeName(r)+(r.Snp==null?"":(" · SNP "+r.Snp.Position+" ["+r.Snp.ReferenceAllele+">"+r.Snp.AlternateAllele+"] · "+(LampReportWriter.IsPa(r)?"BIP RNA/C3 激活":set.SpecificInner+" 末端区分")+" · 红色 = SNP"))+(LampReportWriter.IsMLamp(r)?" · 蓝色 = 人为错配":"")+"    ·    "+oligos.Count+" 条订购引物";
             if(LampReportWriter.IsPa(r))primers.AddCard(new InfoCard("PA-LAMP 修饰与订购","[rA/rC/rG/rU] 表示单个 RNA，[C3] 表示 3′ C3 封闭；需 RNase H2 激活。复制按钮保留完整修饰标记。FASTA 序列行为 DNA 等效序列，订购请使用卡片或 TXT/CSV/HTML 中的修饰序列。"));
             primers.AddCard(new InfoCard(r.Snp==null?"此组 LAMP 反应":"两种独立等位反应",LampReportWriter.Reactions(set,r)));
+            primers.AddCard(new InfoCard("末端稳定性说明",LampEndStability.Explanation));
+            string partsInstruction="各完整订购引物下方，按该引物的 5′→3′ 拼接顺序逐一列出组成区段。FIP = F1c + F2；"+
+                (LampReportWriter.IsPa(r)?"修饰 BIP = B1c + 有效 B2 + RNA + 尾部 DNA + 3′ C3。":"BIP = B1c + B2。")+
+                "区段可分别复制；合成请使用完整订购序列。F3/B3/LF/LB 为单区段引物，直接显示完整序列。";
+            primers.AddCard(new InfoCard("完整引物与组成区段 · 5′→3′",partsInstruction));
             foreach(LampOligo p in oligos)
             {
                 string name=LampReportWriter.OligoName(p,set,r);
-                primers.AddCard(new SequenceCard("primer_"+name,name+"    5′→3′",LampReportWriter.OligoMetadata(p),p.OrderingSequence,p.OrderingSnpIndex,false,LampReportWriter.OligoNote(p,set,r),CopySequence,LampReportWriter.MismatchIndex(p,set,r)));
+                primers.AddCard(new SequenceCard("primer_"+name,name+" · 完整订购序列    5′→3′",LampReportWriter.OligoMetadata(p)+"\n"+LampReportWriter.EndStabilityText(p,set),p.OrderingSequence,p.OrderingSnpIndex,false,LampReportWriter.OligoNote(p,set,r),CopySequence,LampReportWriter.MismatchIndex(p,set,r)));
+                if(p.Regions.Count<=1)continue;
+                var parts=LampReportWriter.OligoParts(p);
+                for(int i=0;i<parts.Count;i++)
+                {
+                    LampOligoPart part=parts[i];
+                    string kind=part.Name.Contains("C3")?"封闭标记":part.Name=="RNA"?"修饰片段":"区段";
+                    string partNote="这是 "+name+" 的第 "+(i+1)+" 个组成部分，按上列顺序拼接为完整引物；单个部分不作为完整引物订购。";
+                    if(p.RnaIndex>=0)partNote+=" RNA 和 [C3] 均保留原修饰标记，合成请使用上方完整修饰序列。";
+                    primers.AddCard(new SequenceCard("primer_"+name+"_part_"+(i+1),name+" · "+part.Name+" "+kind+"    5′→3′",part.Metadata,part.Sequence,LampReportWriter.PartIndex(part,p.OrderingSnpIndex),false,partNote,CopySequence,LampReportWriter.PartIndex(part,LampReportWriter.MismatchIndex(p,set,r))));
+                }
             }
             products.AddCard(new InfoCard("靶区模板与 LAMP 产物","以下显示输入正链中 F3 至 B3 的原始靶区模板，便于检查区段位置。LAMP 形成茎环及串联、分支产物，此处不作为固定长度的最终扩增产物。附加人为错配没有写入原始模板。"));
             products.AddCard(new InfoCard("六区段布局",LampReportWriter.LayoutText(set)));
@@ -254,7 +269,7 @@ namespace RpaDesigner
             try
             {
                 var data=new DataObject();data.SetData(DataFormats.UnicodeText,sequence.Text);data.SetData(DataFormats.Rtf,sequence.Rtf);Clipboard.SetDataObject(data,true);
-                if(CopyCompleted!=null)CopyCompleted("已复制此条完整序列（5′→3′）；支持富文本的编辑器可保留序列颜色标记");
+                if(CopyCompleted!=null)CopyCompleted("已复制所选序列（5′→3′）；支持富文本的编辑器可保留序列颜色标记");
             }
             catch(Exception ex){MessageBox.Show(FindForm(),ex.Message,"复制失败",MessageBoxButtons.OK,MessageBoxIcon.Warning);}
         }

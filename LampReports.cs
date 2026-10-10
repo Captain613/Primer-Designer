@@ -5,6 +5,13 @@ using System.Text;
 
 namespace RpaDesigner
 {
+    public sealed class LampOligoPart
+    {
+        public string Name, Sequence, Metadata;
+        // Character offset in the chemically annotated, complete ordering text.
+        public int OrderingOffset;
+    }
+
     public static class LampReportWriter
     {
         public const string ManualUrl = "https://www.primerexplorer.jp/e/v5_manual/02.html";
@@ -23,7 +30,7 @@ namespace RpaDesigner
         public static string ModeName(LampDesignResult r) { return r.Snp == null ? "普通 LAMP" : IsPa(r) ? "PA-LAMP · 引物激活型" : IsMLamp(r) ? "mLAMP · Ren 2019 人工错配型" : "AS-LAMP · 等位基因特异性"; }
         public static string MethodFor(LampDesignResult r) { return IsPa(r) ? PaMethod : IsMLamp(r) ? MLampMethod : Method; }
         public static string ScoringFor(LampDesignResult r) { return IsPa(r) ? PaScoring : IsMLamp(r) ? MLampScoring : Scoring; }
-        public const string Method = "LAMP 核心为 F3、B3、FIP、BIP 四条引物识别六个区段；FIP 按 5′→3′ 为 F1c + F2，BIP 为 B1c + B2。LF/LB 为可选环引物；未找到的环引物不表示核心组无效。\n本报告的“靶区模板”是输入正链上 F3 至 B3 的原始区间，不是固定长度的最终扩增产物；LAMP 可形成茎环及串联、分支产物。附加人为错配只存在于订购引物中，不改写这里的原始模板。\nAS-LAMP（等位基因特异性 LAMP）把位点放在 FIP 的 F2 或 BIP 的 B2 区段 3′ 端；参考、替代等位基因的两条内引物分别与其余共用引物组成两个独立反应。没有自动生成通用扩增对照，不能把两条等位内引物同时加入同管作为已验证分型体系。\n末端 SNP 和可选附加错配均为待验证设计策略，不能保证另一等位基因不扩增，也不预测判别比或检测限。需用已知两种等位模板及实验对照验证。\n坐标为输入参考正链 1-based 闭区间；订购序列全部为 5′→3′。设计阶段不进行数据库检索；可另行启用在线 BLAST。未进行完整发卡/二聚体自由能计算。";
+        public const string Method = "LAMP 核心为 F3、B3、FIP、BIP 四条引物识别六个区段；FIP 按 5′→3′ 为 F1c + F2，BIP 为 B1c + B2。LF/LB 为可选环引物；未找到的环引物不表示核心组无效。\n本报告的“靶区模板”是输入正链上 F3 至 B3 的原始区间，不是固定长度的最终扩增产物；LAMP 可形成茎环及串联、分支产物。附加人为错配只存在于订购引物中，不改写这里的原始模板。\nAS-LAMP（等位基因特异性 LAMP）把位点放在 FIP 的 F2 或 BIP 的 B2 区段 3′ 端；参考、替代等位基因的两条内引物分别与其余共用引物组成两个独立反应。没有自动生成通用扩增对照，不能把两条等位内引物同时加入同管作为已验证分型体系。\n末端 SNP 和可选附加错配均为待验证设计策略，不能保证另一等位基因不扩增，也不预测判别比或检测限。需用已知两种等位模板及实验对照验证。\n坐标为输入参考正链 1-based 闭区间；订购序列全部为 5′→3′。设计阶段不进行数据库检索；可在第 04 页进行手动 BLAST 文件复核。未进行完整发卡/二聚体自由能计算。";
         public const string Scoring = "分数用于比较有限搜索中得到的候选，基于区段组成、Tm、间距与连续互补等启发式指标；不是扩增成功率或 SNP 选择性。Score = 100/(1+P/25)，P 为组成、结构及间距惩罚；SNP 模式先对两种独立反应的惩罚求平均，之后加入间距和请求但未获得环引物的惩罚，不是把两个显示分数求平均。\nTm 使用 SantaLucia 1998 最近邻参数及 Mg²⁺ 等效单价盐熵校正，每个结合区段分别计算，表示该合成序列与完全匹配互补链的估算值；包含人为错配的引物与实际模板之间的错配双链 Tm 未计算。FIP/BIP 是两段拼接的寡核苷酸，不为整条拼接引物给出单一结合 Tm。实际 LAMP 反应受盐、镁、dNTP、酶及体系影响；显示的区段 Tm 不是建议反应温度。\n默认区段 Tm、GC 与 F2..B2 跨度参考 PrimerExplorer V5 常规序列建议；参考条件为 Na⁺ 50 mM、Mg²⁺ 4 mM、寡核苷酸 100 nM。当前仍采用 SantaLucia 1998 参数及熵盐校正，不等同于 PrimerExplorer 引用的 1996 参数和 16.6×log[Na⁺] 公式，不保证与其得到相同的数值或候选。PrimerExplorer V5 手册第 6.2 节支持在 F2/B2 的 3′ 端安排差异以探索区分等位基因；实际选择性需验证。Badolo 等 AS-LAMP 研究验证了特定位点的 BIP 附加错配方案；Ren 等 2019 mLAMP 研究验证了特定条件下 FIP 倒数第 3 位方案。上述证据均不证明任意新位点或错配碱基普遍有效，程序生成的候选仍属待验证探索。";
 
         private static string N(double value) { return value.ToString("0.0", CultureInfo.InvariantCulture); }
@@ -157,6 +164,65 @@ namespace RpaDesigner
                 foreach (LampRegion region in p.ActivatedRegions) parts.Add("切后有效 " + RegionText(region));
             return String.Join("\n", parts.ToArray());
         }
+        public static List<LampOligoPart> OligoParts(LampOligo p)
+        {
+            if (p == null) throw new ArgumentNullException("p");
+            var parts = new List<LampOligoPart>();
+            int offset = 0;
+            // Region.Sequence already follows synthesis 5′→3′, including SNP
+            // substitutions and artificial mismatches. Do not complement again.
+            foreach (LampRegion region in p.RnaIndex >= 0 ? p.ActivatedRegions : p.Regions)
+            {
+                string name = p.RnaIndex >= 0 && region.Name == "B2" ? "有效 B2" : region.Name;
+                parts.Add(new LampOligoPart { Name = name, Sequence = region.Sequence, OrderingOffset = offset,
+                    Metadata = RegionText(region) + "；完整引物第 " + (offset + 1) + "–" + (offset + region.Sequence.Length) + " 位；该段合成方向 5′→3′" });
+                offset += region.Sequence.Length;
+            }
+            if (p.RnaIndex >= 0)
+            {
+                string rna = "[r" + (p.Sequence[p.RnaIndex] == 'T' ? 'U' : p.Sequence[p.RnaIndex]) + "]";
+                parts.Add(new LampOligoPart { Name = "RNA", Sequence = rna, OrderingOffset = offset,
+                    Metadata = "1 个 RNA 核苷酸；完整引物第 " + (p.RnaIndex + 1) + " 位；对应正链第 " + p.RnaTemplatePosition + " 位；RNase H2 在其 5′ 侧切割" });
+                offset += rna.Length;
+                string tail = p.Sequence.Substring(p.RnaIndex + 1);
+                parts.Add(new LampOligoPart { Name = "尾部 DNA", Sequence = tail, OrderingOffset = offset,
+                    Metadata = tail.Length + " nt；完整引物第 " + (p.RnaIndex + 2) + "–" + p.Sequence.Length + " 位；最后一位为人为错配；切割后释放" });
+                offset += tail.Length;
+                if (!String.IsNullOrEmpty(p.ThreePrimeBlock))
+                    parts.Add(new LampOligoPart { Name = "3′ " + p.ThreePrimeBlock, Sequence = "[" + p.ThreePrimeBlock + "]", OrderingOffset = offset,
+                        Metadata = "3′ 端封闭修饰，不是核苷酸；订购完整前体时保留此标记" });
+            }
+            return parts;
+        }
+        public static int PartIndex(LampOligoPart part, int orderingIndex)
+        {
+            if (part == null) throw new ArgumentNullException("part");
+            int index = orderingIndex - part.OrderingOffset;
+            return orderingIndex >= 0 && index >= 0 && index < part.Sequence.Length ? index : -1;
+        }
+        public static string PartsText(LampOligo p)
+        {
+            var text = new StringBuilder();
+            foreach (LampOligoPart part in OligoParts(p))
+            {
+                if (text.Length > 0) text.Append('\n');
+                text.Append(part.Name).Append(" (5′→3′): ").Append(part.Sequence);
+            }
+            return text.ToString();
+        }
+        private static string PartSequence(List<LampOligoPart> parts, string name)
+        {
+            foreach (LampOligoPart part in parts)
+                if (part.Name == name || name == "B2" && part.Name == "有效 B2") return part.Sequence;
+            return "";
+        }
+        public static string EndStabilityText(LampOligo p, LampPrimerSet set)
+        {
+            var lines = new List<string>();
+            foreach (LampEndStabilityResult value in LampEndStability.Evaluate(p, set)) lines.Add(value.ToString());
+            if (lines.Count == 0) return "末端稳定性未评估：缺少可计算的结合区段。";
+            return String.Join("\n", lines.ToArray());
+        }
         public static string Reactions(LampPrimerSet set, LampDesignResult r)
         {
             var common = new List<string>();
@@ -215,6 +281,29 @@ namespace RpaDesigner
             return b.Build();
         }
         public static string OrderingText(LampPrimerSet set, LampDesignResult r) { return HighlightedOrderingText(set, r).Text.Replace("\n", "\r\n"); }
+        public static HighlightedReport HighlightedGroupCopyText(LampPrimerSet set, LampDesignResult r)
+        {
+            var b = new Builder();
+            b.Line("此组 LAMP 引物 · 全部序列 5′→3′");
+            b.Line("每条完整引物下方列出组成区段；各区段为拆分说明，不是额外订购引物。");
+            bool first = true;
+            foreach (LampOligo p in Oligos(set))
+            {
+                if (!first) b.Line(); first = false;
+                string name = (IsPa(r) ? "PA-LAMP_" : IsMLamp(r) ? "mLAMP_" : r.Snp != null ? "AS-LAMP_" : "LAMP_")
+                    + set.Rank + "_" + OligoName(p, set, r);
+                int mismatchIndex = MismatchIndex(p, set, r);
+                b.Add(name + "\t"); b.Sequence(p.OrderingSequence, p.OrderingSnpIndex, mismatchIndex);
+                if (p.Regions.Count <= 1) continue;
+                foreach (LampOligoPart part in OligoParts(p))
+                {
+                    b.Line(); b.Add(name + "_组成_" + part.Name + " (5′→3′)\t");
+                    b.Sequence(part.Sequence, PartIndex(part, p.OrderingSnpIndex), PartIndex(part, mismatchIndex));
+                }
+            }
+            return b.Build();
+        }
+        public static string GroupCopyText(LampPrimerSet set, LampDesignResult r) { return HighlightedGroupCopyText(set, r).Text.Replace("\n", "\r\n"); }
         public static HighlightedReport HighlightedSet(LampPrimerSet set, LampDesignResult r)
         {
             var b = new Builder();
@@ -225,7 +314,18 @@ namespace RpaDesigner
             foreach (LampOligo p in Oligos(set))
             {
                 b.Line(OligoName(p, set, r) + " 5′→3′"); b.Sequence(p.OrderingSequence, p.OrderingSnpIndex, MismatchIndex(p, set, r)); b.Line();
-                b.Line(OligoMetadata(p)); b.Line(OligoNote(p, set, r));
+                b.Line(OligoMetadata(p)); b.Line(EndStabilityText(p, set)); b.Line(OligoNote(p, set, r));
+                if (p.Regions.Count > 1)
+                {
+                    b.Line("组成部分（按完整引物 5′→3′ 拼接顺序）：");
+                    foreach (LampOligoPart part in OligoParts(p))
+                    {
+                        b.Line(part.Name + " 5′→3′");
+                        b.Sequence(part.Sequence, PartIndex(part, p.OrderingSnpIndex), PartIndex(part, MismatchIndex(p, set, r))); b.Line();
+                        b.Line(part.Metadata);
+                    }
+                    b.Line("各部分用于核对组成；订购与整条引物复制使用上方完整序列。");
+                }
                 if (p.Metrics != null)
                 {
                     b.Line((IsPa(r) ? "DNA 等效结构启发式：发卡茎 " : "完整引物结构启发式：发卡茎 ") + p.Metrics.Hairpin + "；自互补 " + p.Metrics.SelfComplement + "；自身 3′ 互补 " + p.Metrics.SelfThreePrime + "；短串联重复 " + p.Metrics.TandemRepeat + " nt");
@@ -244,7 +344,7 @@ namespace RpaDesigner
             foreach (string note in set.Notes) b.Line("候选组提示：" + note);
             return b.Build();
         }
-        public static string SetText(LampPrimerSet set, LampDesignResult r) { return HighlightedSet(set, r).Text.Replace("\n", "\r\n"); }
+        public static string SetText(LampPrimerSet set, LampDesignResult r) { return ("末端稳定性说明\n" + LampEndStability.Explanation + "\n\n" + HighlightedSet(set, r).Text).Replace("\n", "\r\n"); }
         public static HighlightedReport HighlightedTextReport(LampDesignResult r)
         {
             if (r == null) throw new ArgumentNullException("r");
@@ -256,6 +356,7 @@ namespace RpaDesigner
             b.Line(Params(r.Settings));
             b.Line("结果：" + r.Sets.Count + " 组；搜索裁剪：" + (r.SearchTruncated ? "是" : "否"));
             b.Line("标色：界面与 HTML 中的红色碱基表示 SNP；" + (IsMLamp(r) ? "蓝色碱基表示 mLAMP 订购引物中的人为错配；" : "") + "纯文本、CSV 和 FASTA 不保存颜色。");
+            b.Line(); b.Line("末端稳定性说明"); b.Line(LampEndStability.Explanation);
             b.Line(); b.Line(MethodFor(r)); b.Line(); b.Line(ScoringFor(r)); b.Line();
             foreach (string note in r.Input.Warnings) b.Line("输入提示：" + note);
             foreach (string note in r.Notes) b.Line("设计说明：" + note);
@@ -278,7 +379,8 @@ namespace RpaDesigner
         }
         public static string Csv(LampDesignResult r)
         {
-            var b = new StringBuilder("序列名称,候选组,模式,引物角色,订购序列_5to3,完整长度_nt,结合区段坐标与GC及Tm,本引物SNP位置_1based,SNP正链坐标,参考等位基因,替代等位基因,特异内引物方向,附加错配正链坐标,靶区起点,靶区终点,靶区跨度_nt,结构分数_非选择性,发卡茎_nt,自互补_nt,自身3prime互补_nt,短串联重复_nt,参考靶区模板,替代靶区模板,独立反应组合,本次参数,搜索裁剪,提示与限制\r\n");
+            var b = new StringBuilder("序列名称,候选组,模式,引物角色,订购序列_5to3,完整长度_nt,结合区段坐标与GC及Tm,本引物SNP位置_1based,SNP正链坐标,参考等位基因,替代等位基因,特异内引物方向,附加错配正链坐标,靶区起点,靶区终点,靶区跨度_nt,结构分数_非选择性,发卡茎_nt,自互补_nt,自身3prime互补_nt,短串联重复_nt,参考靶区模板,替代靶区模板,独立反应组合,本次参数,搜索裁剪,提示与限制,各组成部分序列_5to3,F1c_5to3,F2_5to3,B1c_5to3,B2_5to3,RNA_5to3,尾部DNA_5to3,3prime封闭,末端6nt稳定性_序列及DeltaG37,末端稳定性模型与限制\r\n");
+            bool firstEndExplanation = true;
             foreach (LampPrimerSet set in r.Sets)
             foreach (LampOligo p in Oligos(set))
             {
@@ -286,11 +388,16 @@ namespace RpaDesigner
                 if (p.SnpIndex >= 0 && set.ExtraMismatchPosition > 0) notes.Add(MismatchText(set, r));
                 notes.Add("靶区为原始模板，不是固定 LAMP 产物；候选需实验验证；未做全基因组特异性检索");
                 if (IsMLamp(r)) { notes.Add(MLampMethod); notes.Add(MLampScoring); notes.Add("mLAMP 文献依据：" + MLampEvidenceUrl); }
+                List<LampOligoPart> parts = OligoParts(p);
                 string[] cells = { r.Input.Name, set.Rank.ToString(), ModeName(r), OligoName(p, set, r), p.OrderingSequence, p.Sequence.Length.ToString(), OligoMetadata(p),
                     p.SnpIndex < 0 ? "" : (p.SnpIndex + 1).ToString(), r.Snp == null ? "" : r.Snp.Position.ToString(), r.Snp == null ? "" : r.Snp.ReferenceAllele.ToString(), r.Snp == null ? "" : r.Snp.AlternateAllele.ToString(), set.SpecificInner,
                     p.SnpIndex >= 0 && set.ExtraMismatchPosition > 0 ? set.ExtraMismatchPosition.ToString() : "", set.SpanStart.ToString(), set.SpanEnd.ToString(), set.SpanLength.ToString(), N(set.Score),
                     p.Metrics == null ? "" : p.Metrics.Hairpin.ToString(), p.Metrics == null ? "" : p.Metrics.SelfComplement.ToString(), p.Metrics == null ? "" : p.Metrics.SelfThreePrime.ToString(), p.Metrics == null ? "" : p.Metrics.TandemRepeat.ToString(),
-                    set.ReferenceTemplate, r.Snp == null ? "" : set.AlternateTemplate, Reactions(set, r), Params(r.Settings), r.SearchTruncated ? "是" : "否", String.Join("；", notes.ToArray()) };
+                    set.ReferenceTemplate, r.Snp == null ? "" : set.AlternateTemplate, Reactions(set, r), Params(r.Settings), r.SearchTruncated ? "是" : "否", String.Join("；", notes.ToArray()),
+                    PartsText(p), PartSequence(parts, "F1c"), PartSequence(parts, "F2"), PartSequence(parts, "B1c"), PartSequence(parts, "B2"),
+                    PartSequence(parts, "RNA"), PartSequence(parts, "尾部 DNA"), PartSequence(parts, "3′ " + p.ThreePrimeBlock),
+                    EndStabilityText(p, set), firstEndExplanation ? LampEndStability.Explanation : "" };
+                firstEndExplanation = false;
                 for (int i = 0; i < cells.Length; i++) { if (i > 0) b.Append(','); b.Append(CsvCell(cells[i])); } b.Append("\r\n");
             }
             return b.ToString();
@@ -306,6 +413,11 @@ namespace RpaDesigner
                 b.Append(" method=").Append(r.Snp == null ? "LAMP" : r.Settings.SnpMethod);
                 if (IsMLamp(r)) b.Append(" evidence=").Append(MLampEvidenceUrl).Append(" separate_allele_reactions extra_mismatch_from_3prime=").Append(r.Settings.ExtraMismatchFromThreePrime).Append(r.Settings.IncludeLoops ? " optional_loops_program_extension" : " four_primer_framework");
                 if (p.SnpIndex >= 0) b.Append(" SNP_oligo_position=").Append(p.SnpIndex + 1);
+                foreach (LampOligoPart part in OligoParts(p))
+                {
+                    string name = part.Name == "有效 B2" ? "B2_active" : part.Name == "尾部 DNA" ? "tail_DNA" : part.Name.StartsWith("3′ ", StringComparison.Ordinal) ? "block_3prime" : part.Name;
+                    b.Append(" segment_").Append(name).Append('=').Append(part.Sequence);
+                }
                 if (p.RnaIndex >= 0)
                     b.Append(" DNA_equivalent_only NOT_FOR_ORDERING RNA_position=").Append(p.RnaIndex + 1)
                         .Append(" RNA_base=").Append(p.Sequence[p.RnaIndex] == 'T' ? 'U' : p.Sequence[p.RnaIndex])
@@ -339,13 +451,31 @@ namespace RpaDesigner
             b.Append("<article><h3>").Append(E(title)).Append("</h3><p class=\"meta\">").Append(E(Lf(meta))).Append("</p><pre class=\"dna\">");
             b.Append(HtmlSequence(sequence, snpIndex, mismatchIndex)).Append("</pre><p class=\"note\">").Append(E(note)).Append("</p></article>\n");
         }
+        private static void HtmlOligo(StringBuilder b, LampOligo p, LampPrimerSet set, LampDesignResult r)
+        {
+            int mismatch = MismatchIndex(p, set, r);
+            b.Append("<article><h3>").Append(E(OligoName(p, set, r) + " · 5′→3′")).Append("</h3><p class=\"meta\">").Append(E(OligoMetadata(p) + "\n" + EndStabilityText(p, set))).Append("</p><pre class=\"dna\">");
+            b.Append(HtmlSequence(p.OrderingSequence, p.OrderingSnpIndex, mismatch)).Append("</pre><p class=\"note\">").Append(E(OligoNote(p, set, r))).Append("</p>");
+            if (p.Regions.Count > 1)
+            {
+                b.Append("<div class=\"parts\"><h4>组成部分（按完整引物 5′→3′ 拼接顺序）：</h4>");
+                foreach (LampOligoPart part in OligoParts(p))
+                {
+                    b.Append("<h4>").Append(E(part.Name + " · 5′→3′")).Append("</h4><p class=\"meta\">").Append(E(part.Metadata)).Append("</p><pre class=\"dna\">");
+                    b.Append(HtmlSequence(part.Sequence, PartIndex(part, p.OrderingSnpIndex), PartIndex(part, mismatch))).Append("</pre>");
+                }
+                b.Append("<p class=\"note\">各部分用于核对组成；订购使用上方完整序列。</p></div>");
+            }
+            b.Append("</article>\n");
+        }
         public static string Html(LampDesignResult r)
         {
             var b = new StringBuilder("<!doctype html>\n<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-            b.Append("<title>RPA / LAMP 引物设计助手 v" + AppVersion.Display + " — LAMP 候选报告</title><style>body{margin:0;background:#f3f6f8;color:#1a2b3e;font:15px/1.65 'Microsoft YaHei',sans-serif}main{max-width:1160px;margin:auto;padding:24px}h1{font-size:26px}h2{font-size:21px;margin:28px 0 12px}h3{margin:0 0 8px;font-size:17px;color:#007775}article{background:white;border:1px solid #dce5eb;border-radius:10px;padding:18px;margin:12px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:14px}.grid article{margin:0}.meta{white-space:pre-wrap;margin:0 0 12px;color:#52616c}.dna{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;font:16px/1.8 Consolas,monospace;background:#f6f9fa;padding:12px}.note{color:#667582;font-size:13px;margin-bottom:0}.snp{color:#d32f2f;font-weight:700}.mismatch{color:#2563eb;font-weight:700}a{color:#007775}@media(max-width:600px){main{padding:12px}article{padding:12px}}@media print{body{background:white}main{padding:0}.snp,.mismatch{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><main>\n");
+            b.Append("<title>RPA / LAMP 引物设计助手 v" + AppVersion.Display + " — LAMP 候选报告</title><style>body{margin:0;background:#f3f6f8;color:#1a2b3e;font:15px/1.65 'Microsoft YaHei',sans-serif}main{max-width:1160px;margin:auto;padding:24px}h1{font-size:26px}h2{font-size:21px;margin:28px 0 12px}h3{margin:0 0 8px;font-size:17px;color:#007775}article{background:white;border:1px solid #dce5eb;border-radius:10px;padding:18px;margin:12px 0;break-inside:avoid}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:14px}.grid article{margin:0}.meta{white-space:pre-wrap;margin:0 0 12px;color:#52616c}.dna{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;font:16px/1.8 Consolas,monospace;background:#f6f9fa;padding:12px}.note{color:#667582;font-size:13px;margin-bottom:0}.snp{color:#d32f2f;font-weight:700}.mismatch{color:#2563eb;font-weight:700}a{color:#007775}.parts{border-top:1px solid #dce5eb;margin-top:16px;padding-top:10px}.parts h4{margin:8px 0;color:#007775}.parts .dna{margin-top:8px}@media(max-width:600px){main{padding:12px}article{padding:12px}}@media print{body{background:white}main{padding:0}.snp,.mismatch{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><main>\n");
             b.Append("<h1>").Append(ModeName(r)).Append(" 候选报告</h1>");
             HtmlInfo(b, "输入与结果", r.Input.Name + " | " + r.Input.Sequence.Length + " nt\n导出时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n候选：" + r.Sets.Count + " 组；搜索裁剪：" + (r.SearchTruncated ? "是" : "否") + (r.Snp == null ? "" : "\nSNP：" + r.Snp.Position + " [" + r.Snp.ReferenceAllele + ">" + r.Snp.AlternateAllele + "]；红色为 SNP 碱基" + (IsMLamp(r) ? "；蓝色为订购引物中的人为错配" : "")));
             HtmlInfo(b, "本次参数", Params(r.Settings));
+            HtmlInfo(b, "末端稳定性说明", LampEndStability.Explanation);
             if (r.Input.Warnings.Count > 0) HtmlInfo(b, "输入提示", String.Join("\n", r.Input.Warnings.ToArray()));
             if (r.Notes.Count > 0) HtmlInfo(b, "搜索与筛选说明", String.Join("\n", r.Notes.ToArray()));
             foreach (LampPrimerSet set in r.Sets)
@@ -354,7 +484,7 @@ namespace RpaDesigner
                 HtmlInfo(b, "六区段布局", LayoutText(set)); HtmlInfo(b, "反应组合", Reactions(set, r));
                 if (set.ExtraMismatchPosition > 0) HtmlInfo(b, "附加人为错配", MismatchText(set, r));
                 b.Append("<div class=\"grid\">\n");
-                foreach (LampOligo p in Oligos(set)) HtmlDna(b, OligoName(p, set, r) + " · 5′→3′", OligoMetadata(p), p.OrderingSequence, p.OrderingSnpIndex, OligoNote(p, set, r), MismatchIndex(p, set, r));
+                foreach (LampOligo p in Oligos(set)) HtmlOligo(b, p, set, r);
                 b.Append("</div>\n");
                 string region = "原始正链 " + set.SpanStart + "–" + set.SpanEnd + "，" + set.SpanLength + " nt；5′→3′";
                 const string templateNote = "此处显示原始靶区模板，不是固定长度的 LAMP 最终扩增产物。";

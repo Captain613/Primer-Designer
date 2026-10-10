@@ -98,6 +98,7 @@ namespace RpaDesigner
                 ExpectArgument(delegate { LampThermodynamics.FromStackSums('A', 'C', 20, false, Double.NaN, -30, 50, 100, 4); });
                 Near(LampThermodynamics.MeltingTemperature(nonself, 50, 100, 4), LampThermodynamics.MeltingTemperature(nonself.ToLowerInvariant(), 50, 100, 4), 1e-12, "Case normalization");
             });
+            LampEndStabilityTests.Register(test);
             report.Add(""); report.Add("Passed: " + passed); report.Add("Failed: " + failed); report.Add(failed == 0 ? "RESULT: PASS" : "RESULT: FAIL");
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath)));
             File.WriteAllLines(reportPath, report.ToArray(), new UTF8Encoding(true)); return failed == 0 ? 0 : 1;

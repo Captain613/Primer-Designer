@@ -4,6 +4,40 @@ namespace RpaDesigner
 {
     public static class LampThermodynamics
     {
+        // Direct unified ΔG°37 parameters (kcal/mol), SantaLucia 1998,
+        // doi:10.1073/pnas.95.4.1460. Fixed 37°C / 1 M Na+ reference.
+        // Integer hundredths preserve the published precision at the threshold.
+        // Do not reconstruct these values from rounded H/S or apply Tm salts.
+        public static double EndDeltaG37(string sixBases)
+        {
+            if (sixBases == null || sixBases.Length != 6)
+                throw new ArgumentException("末端 ΔG°37 计算需要恰好 6 个 DNA 碱基。");
+            string sequence = sixBases.ToUpperInvariant();
+            foreach (char c in sequence)
+                if ("ACGT".IndexOf(c) < 0) throw new ArgumentException("末端 ΔG°37 仅支持 A/C/G/T。");
+            int energy = 0;
+            for (int i = 0; i < 5; i++)
+            {
+                switch (sequence.Substring(i, 2))
+                {
+                    case "AA": case "TT": energy -= 100; break;
+                    case "AT": energy -= 88; break;
+                    case "TA": energy -= 58; break;
+                    case "CA": case "TG": energy -= 145; break;
+                    case "GT": case "AC": energy -= 144; break;
+                    case "CT": case "AG": energy -= 128; break;
+                    case "GA": case "TC": energy -= 130; break;
+                    case "CG": energy -= 217; break;
+                    case "GC": energy -= 224; break;
+                    case "GG": case "CC": energy -= 184; break;
+                }
+            }
+            energy += sequence[0] == 'A' || sequence[0] == 'T' ? 103 : 98;
+            energy += sequence[5] == 'A' || sequence[5] == 'T' ? 103 : 98;
+            if (sequence == DesignEngine.ReverseComplement(sequence)) energy += 43;
+            return energy / 100.0;
+        }
+
         // SantaLucia (1998), PNAS 95:1460-1465, Table 2. Enthalpy is
         // kcal/mol and entropy cal/(mol K). Terminal initiation is added
         // independently for each end. This is a perfect-match DNA model.

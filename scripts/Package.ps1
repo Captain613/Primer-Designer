@@ -1,4 +1,4 @@
-﻿param([string]$ApplicationPath, [string]$TestOutputDirectory)
+param([string]$ApplicationPath, [string]$TestOutputDirectory)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'ProjectConfig.ps1')
 $config = Get-ProjectConfiguration
@@ -15,7 +15,7 @@ $summaryPath = Join-Path $checks 'test-summary.json'
 if (!(Test-Path -LiteralPath $summaryPath -PathType Leaf)) { throw 'Run scripts/Test.ps1 before packaging.' }
 $summary = Get-Content -LiteralPath $summaryPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($summary.Status -ne 'Passed' -or $summary.ApplicationSHA256 -ne $applicationHash) { throw 'Test results must pass and match the current application SHA256. Run scripts/Test.ps1 again.' }
-foreach ($suite in @('self-test', 'snp-self-test', 'highlight-self-test', 'lamp-self-test', 'lamp-region-tm-self-test', 'lamp-thermodynamics-self-test', 'pa-lamp-self-test', 'mlamp-self-test', 'unlimited-rpa-self-test', 'unlimited-lamp-self-test', 'blast-online-self-test', 'blast-analysis-self-test')) {
+foreach ($suite in @('self-test', 'snp-self-test', 'highlight-self-test', 'lamp-self-test', 'lamp-parts-self-test', 'lamp-region-tm-self-test', 'lamp-thermodynamics-self-test', 'pa-lamp-self-test', 'mlamp-self-test', 'unlimited-rpa-self-test', 'unlimited-lamp-self-test', 'blast-online-self-test', 'blast-analysis-self-test', 'blast-manual-self-test')) {
     if (@($summary.Reports | Where-Object { $_.Suite -eq $suite }).Count -ne 1) { throw ('Missing current passing test suite: ' + $suite) }
 }
 # A new staging directory contains only files from this release. No historical

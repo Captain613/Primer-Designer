@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -66,7 +66,7 @@ namespace RpaDesigner
             var footer = new TableLayoutPanel {Dock=DockStyle.Fill,ColumnCount=2};
             footer.RowCount=1;footer.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,200));
-            status = new Label {Text="准备就绪 · 本地设计；在线 BLAST 需另行确认",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(90,106,120)};
+            status = new Label {Text="准备就绪 · 本地设计；BLAST 文件手动复核",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(90,106,120)};
             progress = new ProgressBar {Dock=DockStyle.Fill,Minimum=0,Maximum=100,Margin=new Padding(6,11,0,9)};
             footer.Controls.Add(status,0,0);footer.Controls.Add(progress,1,0);shell.Controls.Add(footer,0,2);
             FormClosing += delegate { if(cancellation!=null)cancellation.Cancel();if(blastCancellation!=null)blastCancellation.Cancel(); };
@@ -129,7 +129,7 @@ namespace RpaDesigner
             var tools=new FlowLayoutPanel {Name="resultActions",Dock=DockStyle.Fill,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,Padding=new Padding(0,8,0,0),WrapContents=true};
             copy=ButtonFor("复制选中引物",CopyPair);copy.Enabled=false;tools.Controls.Add(copy);
             export=ButtonFor("导出结果…",Export);export.Enabled=false;tools.Controls.Add(export);
-            var blastLink=ButtonFor("BLAST 特异性…",delegate{tabs.SelectedTab=blastPage;LoadBlastCandidate();});blastLink.Name="openBlast";tools.Controls.Add(blastLink);
+            var blastLink=ButtonFor("BLAST 手动复核…",delegate{tabs.SelectedTab=blastPage;LoadBlastCandidate();});blastLink.Name="openBlast";tools.Controls.Add(blastLink);
             tools.Controls.Add(new Label {Text="HTML 彩色报告 / CSV / TXT / FASTA",AutoSize=true,Margin=new Padding(10,8,0,0),ForeColor=Color.DimGray});root.Controls.Add(tools,0,2);
         }
         private void BuildHelp()
@@ -138,7 +138,7 @@ namespace RpaDesigner
             var root=new TableLayoutPanel {Dock=DockStyle.Fill,RowCount=2,ColumnCount=1};root.RowStyles.Add(new RowStyle(SizeType.Percent,100));root.RowStyles.Add(new RowStyle(SizeType.Absolute,36));page.Controls.Add(root);
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             var help = new TextBox {Dock=DockStyle.Fill,ReadOnly=true,Multiline=true,ScrollBars=ScrollBars.Vertical,BorderStyle=BorderStyle.None,BackColor=Color.White,Font=new Font("Microsoft YaHei UI",11)};
-            help.Text="从序列开始\r\n\r\n1. 粘贴序列，或导入一条 FASTA / TXT。可先载入随机演示序列了解操作。\r\n2. 设置引物长度和产物范围。若要覆盖 SNP 或已有靶点，勾选“包围指定靶区”，填写输入正链上的坐标；普通 RPA 模式不用于等位基因判别；SNP 请选择专用模式。\r\n3. 点击“开始设计”，在候选结果中比较不同区域的引物对。\r\n4. 复制引物，或导出 CSV（Excel 可打开）、TXT（完整参数与说明）、FASTA。\r\n\r\n默认参数依据\r\n\r\nTwistAmp Assay Design Manual（INASDM Rev 1，§2）建议 30–35 nt 引物、30–70% GC 和 100–200 bp 产物。大于 500 bp 应结合体系另行评估。参数范围只是候选筛选依据，不能保证反应性能。\r\n\r\n输入约定\r\n\r\n空白和数字行号会被移除；U 转为 T 并提示。IUPAC 歧义位点保留原始坐标，含歧义位点的引物窗口被跳过；产物内部可能保留歧义。每次只接受一条序列。输入为线性模板，长度上限 20,000 nt。\r\n\r\n如何理解结果\r\n\r\n" + ReportWriter.Method + "\r\n\r\n连续同聚物超过 5 nt 的窗口会被排除；评分偏好较少重复和互补的候选。分数越高越优先筛选。长序列搜索会按区域保留候选并裁剪配对，界面和完整报告会提示，因此不是所有组合的穷举最优解。具体权重和筛选记录见程序附带说明及每次 TXT 报告。\r\n\r\n引物设计在本机运行。可选 NCBI 在线 BLAST 仅在启用并确认上传后发送候选序列与联系邮箱，不上传完整模板或原始标题。BLAST 结果单独查看和导出；设计报告本身不包含数据库特异性验证结论。";
+            help.Text="从序列开始\r\n\r\n1. 粘贴序列，或导入一条 FASTA / TXT。可先载入随机演示序列了解操作。\r\n2. 设置引物长度和产物范围。若要覆盖 SNP 或已有靶点，勾选“包围指定靶区”，填写输入正链上的坐标；普通 RPA 模式不用于等位基因判别；SNP 请选择专用模式。\r\n3. 点击“开始设计”，在候选结果中比较不同区域的引物对。\r\n4. 复制引物，或导出 CSV（Excel 可打开）、TXT（完整参数与说明）、FASTA。\r\n\r\n默认参数依据\r\n\r\nTwistAmp Assay Design Manual（INASDM Rev 1，§2）建议 30–35 nt 引物、30–70% GC 和 100–200 bp 产物。大于 500 bp 应结合体系另行评估。参数范围只是候选筛选依据，不能保证反应性能。\r\n\r\n输入约定\r\n\r\n空白和数字行号会被移除；U 转为 T 并提示。IUPAC 歧义位点保留原始坐标，含歧义位点的引物窗口被跳过；产物内部可能保留歧义。每次只接受一条序列。输入为线性模板，长度上限 20,000 nt。\r\n\r\n如何理解结果\r\n\r\n" + ReportWriter.Method + "\r\n\r\n连续同聚物超过 5 nt 的窗口会被排除；评分偏好较少重复和互补的候选。分数越高越优先筛选。长序列搜索会按区域保留候选并裁剪配对，界面和完整报告会提示，因此不是所有组合的穷举最优解。具体权重和筛选记录见程序附带说明及每次 TXT 报告。\r\n\r\n引物设计在本机运行。第 04 页导出区段 FASTA，由用户在 NCBI 网页 BLAST；下载完整 XML 后选择对应 FASTA 批量复核。复核不重新上传引物，可联网补齐公开参考区段。结果独立保存，不作为特异性通过证明。";
             help.Text=help.Text.Replace("普通 RPA 模式不用于等位基因判别；SNP 请选择专用模式。","该选项只包围区域；SNP 候选请使用 SNP 模式。").Replace("如何理解结果","如何理解普通扩增结果");
             help.Text+="\r\n\r\n分区结果界面（v0.4）\r\n\r\n左侧点击候选组；右侧位置图和内容同步切换。引物清单中每条引物独立展示序列、坐标、长度、GC 和 Tm；扩增产物页分别列出各反应的完整产物；评价与说明页查看结构指标、错配策略和筛选提示。卡片上的“复制序列”仅复制这一条完整序列；底部按钮复制整组引物。切换候选时保留当前详情页，方便比较。";
             help.Text+="\r\n\r\nSNP 红色标记（v0.3）\r\n\r\n结果中的 SNP 碱基显示为红色：包括两条等位正向引物及全部四种产物序列。共用引物不覆盖 SNP，因此不标红；人为附加错配另列位置和替换碱基；文本报告中也用 * 注释，不混作 SNP。导出选择 HTML 可保存红色标记，浏览器可直接打开。TXT、CSV、FASTA 不支持字符颜色，仍为纯文本。复制所选引物同时提供纯文本和富文本；粘贴到支持富文本的编辑器并保留源格式时可显示红色。";
@@ -147,7 +147,7 @@ namespace RpaDesigner
             help.Text="mLAMP 人工错配型扩增（Ren 2019）\r\n\r\n"+LampReportWriter.MLampMethod+"\r\n\r\n选择“mLAMP · 人工错配型（Ren 2019）”，以 [参考碱基>替代碱基] 标注一处 SNP。SNP 判别方向固定为 FIP，SNP 对应 F2 的 3′ 最末位。SNP 策略默认倒数第 3 位人工错配；可切换为无人工错配（论文对照）或倒数第 2 位（论文比较）。程序在所选位点枚举其余三种 DNA 碱基并排序，具体替换碱基仍需实验比较。\r\n默认每个反应使用 FIP、BIP、F3、B3 四条核心引物，两种等位反应分开。可手动勾选环引物，属于文献外扩展。恢复 LAMP 默认会恢复 FIP、倒数第 3 位人工错配和不加环引物；离开此模式会还原进入前的错配、环引物及可选方向设置。\r\n原始研究："+LampReportWriter.MLampEvidenceUrl+"\r\n\r\n"+help.Text;
             help.Text="RPA SNP / mLAMP 序列颜色（v0.17）\r\n\r\n红色为 SNP 碱基，蓝色为人为错配碱基。引物卡片、单条及整组富文本复制、HTML 报告均保留颜色；无人工错配方案不显示蓝色。RPA 两种等位反应产物中由引物引入的对应碱基也标蓝；对照产物和原始模板不标蓝。TXT / CSV / FASTA 不保存颜色。\r\n\r\n"+help.Text;
             help.Text="筛选参数无限制（v0.17）\r\n\r\n勾选某个数字旁的“无限制”，即可关闭该项筛选；取消勾选后恢复原数值。上下限可分别选择。RPA 的偏好产物长度选择无限制时，不再按产物长度偏好评分。候选数量保持现有设置。恢复默认参数会取消无限制。\r\n无限制不取消模板边界、LAMP 六区顺序及间距、结构筛选或方法构型。放开长度后程序可能采样搜索，并在结果中注明；不保证穷举所有组合。靶区坐标继续通过“包围指定靶区”开关控制，PA 尾部长度和 SNP 策略继续按所选方法设置。\r\n\r\n"+help.Text;
-            help.Text="可选 NCBI 在线 BLAST（v0.17）\r\n\r\n完成设计并选中一组候选后，点击“BLAST 特异性…”或打开第 04 页。默认关闭；勾选启用、填写联系邮箱、选择数据库后，提交前会列出实际上传的匿名 FASTA，须确认才发送。仅上传当前候选的引物/结合区段，不上传完整模板或原始 FASTA 标题。\r\n默认检索 RefSeq 参考基因组全部物种。预期登录号仅作本地标注，不限制搜索；同一染色体仍需核对具体坐标。覆盖率、一致率与组合跨度是本地解释阈值。LAMP FIP/BIP 分区比对，PA-LAMP 查询切后有效 DNA，不评估 RNase H2 或 C3。\r\n结果包含单条命中和位置关系相容的候选组合，不能作为特异性通过证明。失败、超时、缺失查询及无命中分别提示。可导出完整 TXT、命中 CSV 和原始 XML；这些结果与原设计报告分开。取消只停止本地等待，不能撤回已提交数据。\r\n\r\n"+help.Text;
+            help.Text="BLAST 手动批量复核（v"+AppVersion.Display+"）\r\n\r\n第 04 页按“导出区段 FASTA → 网页 BLAST → 导入完整 XML / FASTA”的顺序使用。点击载入当前候选，可预览、复制或导出真实区段序列；LAMP 的 FIP/BIP 拆成六核心结合区，保留人为错配。PA-LAMP 使用切后有效 DNA，LF/LB 只作为辅助查询。程序导出的 reactions 标记记录真实反应组合，请保持标题与序列不变。\r\n“打开 NCBI（推荐设置）”预填短序列 BLAST 参数，默认人类基因组；第 04 页“NCBI 网页参数与说明”可修改物种、查看各项含义。把导出的 FASTA 用于 NCBI Nucleotide BLAST，核对物种、数据库及参数，下载全部查询的完整 XML；ZIP 需先解压。回到第 04 页，选择 XML 和同一份 FASTA，填写预期参考登录号及某区段 3′最末位的基因组坐标（可留空 / 0），点击开始批量复核。输入序列上的相对坐标不能直接当作基因组坐标。\r\n本地核对查询标题、长度和返回碱基，再用公开参考序列补齐末端，检查同一参考序列上的顺序、方向、不重叠关系和跨度。默认每区段最多 4 处错配、跨度 1000 bp；这是工程初筛范围，不是实验标准。参考序列缓存后可离线使用。\r\n完成后可打开 HTML 报告，报告及 TXT 独立存入程序目录的 BLAST复核/结果。未发现其他组合不等于特异性通过；二聚体、发卡、无模板自扩增和等位选择性不在此项验证范围内。缺失查询、参考获取失败和搜索截断都会提示。\r\n\r\n"+help.Text;
             help.Text="默认参数与区段 Tm\r\n\r\nLAMP 当前默认是较宽的候选搜索范围：各结合片段 17–30 nt、GC 30–75%；F3 / B3 / F2 / B2 各为 52–68 °C，F1c / B1c / LF / LB 各为 58–72 °C；F2..B2 跨度 100–220 bp、F3..B3 跨度 110–350 bp（均含两端）。各区段 Tm 可独立修改；默认排序目标为前四区段 60 °C、后四区段 65 °C。修改范围后按有效范围中点排序，任意一端无限制时回退到 60/65 °C。\r\nPrimerExplorer V5 的较窄参考目标为前四区段 59–61 °C、后四区段 64–66 °C、GC 40–65% 和 F2..B2 跨度 120–160 bp。由于 Tm 计算模型和位点序列的差异，把这些目标全部当成硬性筛选边界容易漏掉可供实验筛选的候选。\r\n参考计算条件：Na⁺ 50 mM、Mg²⁺ 4 mM、寡核苷酸 100 nM。Mg²⁺ 按网站公式换算等效 Na⁺；程序保留 SantaLucia 1998 最近邻参数及熵盐校正，与 PrimerExplorer 的公式不同。这些是计算参考条件，不是建议实验配方。\r\nRPA：30–35 nt、GC 30–70%、产物 100–200 bp，保留符合 TwistDx 指南的默认值；Tm 仅供参考，不作为 RPA 硬筛选。\r\n官方来源：PrimerExplorer V5 设计手册正文第 1–3 页 https://primerexplorer.jp/e/v5_manual/pdf/PrimerExplorerV5_Manual_1.pdf ；Tm 附录 https://primerexplorer.jp/e/v3_manual/03.html ；TwistDx / Abbott 设计手册 https://www.globalpointofcare.abbott/us/en/lp/twistdx/support.html 。\r\n\r\n"+help.Text;
             root.Controls.Add(help,0,0);
             var link = new LinkLabel {Text="打开官方 TwistAmp 引物设计手册（联网）",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft};

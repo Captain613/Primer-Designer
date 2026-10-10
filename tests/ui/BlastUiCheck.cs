@@ -1,17 +1,18 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using RpaDesigner;
+using Batch = LampBatchReview;
 
-// Offline, hidden native-control checks. Never call StartBlast, Show/ShowDialog,
-// export dialogs or the system clipboard. Fixtures below are artificial DNA.
+// Hidden offline native-control checks: no website, clipboard, dialog or network.
 internal static class BlastUiCheck
 {
     private const string PrivateTitle = "PRIVATE_LOCAL_FASTA_TITLE_NOT_FOR_UPLOAD";
@@ -24,242 +25,109 @@ internal static class BlastUiCheck
     [STAThread]
     private static int Main(string[] args)
     {
-        string output = args.Length == 0 ? AppDomain.CurrentDomain.BaseDirectory : Path.GetFullPath(args[0]);
-        Directory.CreateDirectory(output);
+        string output = args.Length == 0 ? AppDomain.CurrentDomain.BaseDirectory : Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         try
         {
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs e) { dispatchError = e.Exception; };
-            Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-            Control.CheckForIllegalCrossThreadCalls = true;
+            Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); Control.CheckForIllegalCrossThreadCalls = true;
             using (var form = new MainForm())
             {
-                Handles(form); Pump(form);
-                notes.Add("Assembly=" + typeof(MainForm).Assembly.Location);
-                using (Graphics g = form.CreateGraphics()) notes.Add("DPI=" + g.DpiX + "x" + g.DpiY);
-                CheckInitialState(form);
-                CheckDatabaseSettings(form);
-                CheckElapsedProgress(form);
-                CheckOriginalWorker(form);
-                for (int mode = 0; mode < 6; mode++) CheckCandidatePreview(form, mode);
-                CheckInvalidation(form);
-                CheckUnsupportedQueries(form);
-                CheckLayout(form, output);
-                AssertNoNetworkState(form, "All offline checks");
-                Check(!form.Visible, "Test never displays a desktop form.");
+                Handles(form); Pump(form); notes.Add("Assembly=" + typeof(MainForm).Assembly.Location);
+                Check(!Field<Button>(form, "blastRun").Enabled && !Field<Button>(form, "blastOpenReport").Enabled, "Empty file selection cannot start or display an old result.");
+                Check(Field<TextBox>(form, "blastExpected").TextLength == 0 && Field<NumericUpDown>(form, "blastSite").Value == 0, "No hard-coded CYP2C9 target for other users.");
+                Check(form.Controls.Find("blastEnabled", true).Length == 0 && form.Controls.Find("blastEmail", true).Length == 0, "Online submit and contact-email workflow removed.");
+                Check(Field<TextBox>(form, "blastWebOrganism").Text == BlastWebPreset.DefaultOrganism, "New webpage defaults to human and remains editable.");
+                var help = (TextBox)form.Controls.Find("blastWebHelp", true).Single();
+                Check(help.ReadOnly && help.Multiline && help.ScrollBars == ScrollBars.Vertical && help.Text.Contains("Max matches in a query range = 0") && help.Text.Contains("布局跨度上限 = 1000 bp") && help.Text.Contains("不会自动提交序列"), "Scrollable instructions explain webpage values and local review boundaries.");
+                for (int mode = 0; mode < 6; mode++) CheckTemplate(form, mode, output);
+                CheckManualImport(form, output); CheckLayout(form, output);
+                Check(!form.Visible, "Test never displays a desktop window."); AssertNoNetworkState(form, "Final state");
             }
         }
         catch (Exception ex) { errors.Add(ex.ToString()); }
-        notes.Add("Assertions=" + checks + "; failures=" + errors.Count);
-        foreach (string error in errors) notes.Add("FAIL " + error);
-        notes.Add("Offline only: no BLAST submission, external upload, export dialog, clipboard, or visible desktop window.");
-        notes.Add(errors.Count == 0 ? "RESULT: PASS" : "RESULT: FAIL");
-        File.WriteAllLines(Path.Combine(output, "blast-ui-test-report.txt"), notes.ToArray(), new UTF8Encoding(true));
-        return errors.Count == 0 ? 0 : 1;
+        notes.Add("Assertions=" + checks + "; failures=" + errors.Count); foreach (string error in errors) notes.Add("FAIL " + error);
+        notes.Add("Offline only: no BLAST submission, network request, dialog, clipboard or visible desktop window.");
+        notes.Add(errors.Count == 0 ? "RESULT: PASS" : "RESULT: FAIL"); File.WriteAllLines(Path.Combine(output, "blast-ui-test-report.txt"), notes.ToArray(), new UTF8Encoding(true)); return errors.Count == 0 ? 0 : 1;
     }
-
-    private static void CheckInitialState(MainForm form)
+    private static void CheckTemplate(MainForm form, int mode, string output)
     {
-        Check(!Field<CheckBox>(form, "blastEnabled").Checked, "Online BLAST is off by default.");
-        Check(!Field<Control>(form, "blastOptions").Enabled, "BLAST settings are disabled while optional integration is off.");
-        Check(!Field<Button>(form, "blastRun").Enabled && !Field<Button>(form, "blastCancel").Enabled && !Field<Button>(form, "blastExport").Enabled,
-            "Submit, cancel and export begin disabled without a job or result.");
-        Field<TabControl>(form, "tabs").SelectedTab = Field<TabPage>(form, "blastPage");
-        Invoke(form, "LoadBlastCandidate");
-        Check(Field<BlastQuerySet>(form, "blastQueries") == null && Field<TextBox>(form, "blastPreview").TextLength == 0,
-            "An empty candidate grid yields no prepared upload.");
-        Field<CheckBox>(form, "blastEnabled").Checked = true;
-        Check(Field<Control>(form, "blastOptions").Enabled && !Field<Button>(form, "blastRun").Enabled,
-            "Enabling BLAST alone does not enable submission without a selected candidate.");
-        AssertNoNetworkState(form, "Enabling without candidates");
-        Field<CheckBox>(form, "blastEnabled").Checked = false;
-    }
-
-    private static void CheckDatabaseSettings(MainForm form)
-    {
-        ComboBox database = Field<ComboBox>(form, "blastDatabase");
-        string[] expected = { "refseq_representative_genomes", "refseq_genomes", "core_nt" };
-        Check(database.Items.Count == expected.Length && database.SelectedIndex == 0, "Three database choices with reference genomes as default.");
-        Field<TextBox>(form, "blastEmail").Text = " offline-ui@example.org ";
-        Field<TextBox>(form, "blastExpected").Text = " NC_000010.11, NC_000001.11 ";
-        for (int i = 0; i < expected.Length; i++)
+        PrepareFixture(form, mode); Invoke(form, "LoadBlastCandidate"); Pump(form);
+        string preview = Field<TextBox>(form, "blastPreview").Text;
+        Check(preview.Length > 0 && Field<Button>(form, "blastCopy").Enabled && Field<Button>(form, "blastExportFasta").Enabled, "Mode " + mode + " can copy/export actual queries without enabling online upload.");
+        string path = Path.Combine(output, "mode-" + mode + ".fasta"); File.WriteAllText(path, preview);
+        var primers = Batch.Engine.ReadFasta(path); var profiles = Batch.Engine.BuildProfiles(primers);
+        Check(profiles.Count == (mode == 0 || mode == 2 ? 1 : mode == 1 ? 3 : 2), "Mode " + mode + " retains actual independent reactions.");
+        Check(primers.All(p => preview.Contains(">" + p.Id) && p.Dna.All(c => "ACGT".Contains(c))), "Mode " + mode + " has importable named DNA records.");
+        if (mode >= 2)
         {
-            database.SelectedIndex = i;
-            BlastSettings settings = (BlastSettings)Invoke(form, "ReadBlastSettings");
-            Check(settings.Database == expected[i], "Database UI maps to documented NCBI ID: " + expected[i]);
-            Check(settings.Email == "offline-ui@example.org" && settings.ExpectedAccessions == "NC_000010.11, NC_000001.11",
-                "Contact and optional accession settings are read without surrounding whitespace.");
+            LampPrimerSet set = Field<LampDesignResult>(form, "lampResult").Sets[0];
+            Check(!primers.Any(p => p.Dna == set.FIP.Sequence || p.Dna == set.BIP.Sequence), "Mode " + mode + " splits full inner primers.");
+            if (mode == 4) Check(profiles.All(p => p.Primers[4].Dna == set.BIP.ActivatedRegions[1].Sequence), "PA-LAMP uses active B2.");
         }
-        database.SelectedIndex = 0;
-        BlastSettings defaults = (BlastSettings)Invoke(form, "ReadBlastSettings");
-        Check(defaults.MinCoverage == 90 && defaults.MinIdentity == 80 && defaults.MaxLocusSpan == 2000 && defaults.HitListSize == 100,
-            "BLAST UI preserves default coverage, identity, locus span and hit count.");
-        Check(Field<Label>(form, "blastScope").Text.Contains("全部物种") && Field<Label>(form, "blastScope").Text.Contains("core_nt"),
-            "Search scope and core_nt chromosome limitation are visible.");
-        Check(Field<Label>(form, "blastScope").Text.Contains("本程序要求填写联系邮箱")
-            && !Field<Label>(form, "blastScope").Text.Contains("联系邮箱为 NCBI 要求"),
-            "The UI attributes the contact-email policy to this app and NCBI's developer guidance.");
-        AssertNoNetworkState(form, "Editing BLAST settings");
+        AssertPreviewPrivate(form, "Mode " + mode); AssertNoNetworkState(form, "Template only");
     }
-
-    private static void CheckElapsedProgress(MainForm form)
+    private static void CheckManualImport(MainForm form, string output)
     {
-        var timer = Field<System.Windows.Forms.Timer>(form, "blastElapsedTimer");
-        var label = Field<Label>(form, "blastState");
-        string previous = label.Text;
-        Check(timer != null && timer.Interval == 1000 && !timer.Enabled, "BLAST elapsed timer starts idle and ticks once per second.");
-        var elapsed = Stopwatch.StartNew();
-        try
+        Set(form, "result", null); Set(form, "snpResult", null); Set(form, "lampResult", null); Field<DataGridView>(form, "grid").Rows.Clear(); Invoke(form, "ClearBlastResults");
+        var settings = BlastManualSelfTests.SyntheticFixture(Path.Combine(output, "manual-input"), "gui", true, false);
+        Field<TextBox>(form, "blastXmlFile").Text = settings.Xml; Field<TextBox>(form, "blastFastaFile").Text = settings.Fasta;
+        Field<TextBox>(form, "blastExpected").Text = settings.ExpectedAccession; Field<NumericUpDown>(form, "blastSite").Value = settings.ExpectedSite;
+        Field<CheckBox>(form, "blastNetwork").Checked = false;
+        var uiSettings = (Batch.Settings)Invoke(form, "ReadBlastSettings"); var window = Batch.Engine.Read(settings).Windows.Single();
+        Directory.CreateDirectory(uiSettings.CacheDirectory); File.Copy(Batch.Engine.CachePath(settings, window), Batch.Engine.CachePath(uiSettings, window), true);
+        Check(Field<Button>(form, "blastRun").Enabled && Field<BlastQuerySet>(form, "blastQueries") == null, "Existing files can be reviewed without a design candidate.");
+        StartAndWait(form);
+        var result = Field<Batch.Analysis>(form, "blastBatchResult"); string report = Field<string>(form, "blastReportPath");
+        Check(result != null && result.Combinations.Count(c => c.Expected) == 2 && result.FailedWindows == 0, "GUI restores both expected alleles from truncated XML.");
+        Check(File.Exists(report) && Field<Button>(form, "blastOpenReport").Enabled, "HTML saved and report button enabled.");
+        Check(Field<TextBox>(form, "blastReport").Text.Contains("预期位点组合 2 个") && Field<TextBox>(form, "blastReport").Text.Contains("不等于特异性通过"), "Summary states count and interpretation scope.");
+        Field<NumericUpDown>(form, "blastMismatches").Value = 3;
+        Check(Field<Batch.Analysis>(form, "blastBatchResult") == null && Field<TextBox>(form, "blastReport").TextLength == 0 && !Field<Button>(form, "blastOpenReport").Enabled, "Changing thresholds invalidates a stale result.");
+        Field<NumericUpDown>(form, "blastMismatches").Value = 4;
+        string badFasta = Path.Combine(output, "mismatched.fasta"); string original = File.ReadAllText(settings.Fasta); var first = Batch.Engine.ReadFasta(settings.Fasta)[0];
+        File.WriteAllText(badFasta, original.Replace(first.Dna, (first.Dna[0] == 'A' ? "C" : "A") + first.Dna.Substring(1)));
+        Field<TextBox>(form, "blastFastaFile").Text = badFasta; StartAndWait(form);
+        Check(Field<Batch.Analysis>(form, "blastBatchResult") == null && !Field<Button>(form, "blastOpenReport").Enabled && Field<Label>(form, "blastState").Text.Contains("碱基不一致"), "Mismatched XML/FASTA fails visibly and cannot retain previous report.");
+        Field<TextBox>(form, "blastFastaFile").Text = settings.Fasta;
+        typeof(MainForm).GetMethod("StartBlast", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(form, new object[] { null, EventArgs.Empty });
+        Field<CancellationTokenSource>(form, "blastCancellation").Cancel(); WaitIdle(form);
+        Check(!Field<Button>(form, "blastOpenReport").Enabled && Field<Label>(form, "blastState").Text.Contains("已取消"), "Cancellation produces no completed assessment.");
+        StartAndWait(form);
+        string before = Field<string>(form, "blastReportPath"); Field<TabControl>(form, "tabs").SelectedTab = Field<TabPage>(form, "blastPage"); Pump(form);
+        Check(before == Field<string>(form, "blastReportPath"), "Switching to the review tab preserves file-based result provenance.");
+        Field<TabControl>(form, "blastGuideTabs").SelectedIndex = 1; Pump(form);
+        Check(Field<TabControl>(form, "blastGuideTabs").SelectedIndex == 1, "Parameter explanation opens inside the manual review page.");
+        Field<TextBox>(form, "blastWebOrganism").Text = "Mus musculus (taxid:10090)";
+        string webUrl = (string)Invoke(form, "ReadBlastWebUrl");
+        Check(Uri.UnescapeDataString(webUrl).Contains("Mus musculus (taxid:10090)") && !webUrl.Contains(PrivateTitle) && !webUrl.Contains("NC_SYNTH") && !webUrl.Contains("QUERY=") && !webUrl.Contains(settings.Xml), "Website uses selected organism without including local data.");
+        Check(before == Field<string>(form, "blastReportPath") && Field<Button>(form, "blastOpenReport").Enabled, "Webpage preferences cannot relabel or invalidate existing XML results.");
+        Field<TextBox>(form, "blastWebOrganism").Text = BlastWebPreset.DefaultOrganism;
+        Field<TabControl>(form, "blastGuideTabs").SelectedIndex = 0;
+    }
+    private static void StartAndWait(MainForm form)
+    { typeof(MainForm).GetMethod("StartBlast", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(form, new object[] { null, EventArgs.Empty }); WaitIdle(form); }
+    private static void WaitIdle(MainForm form)
+    {
+        Stopwatch wait = Stopwatch.StartNew(); while (Field<bool>(form, "blastBusy") && wait.ElapsedMilliseconds < 30000) { Application.DoEvents(); Thread.Sleep(15); }
+        Pump(form); if (Field<bool>(form, "blastBusy")) throw new TimeoutException("Manual review exceeded 30 seconds.");
+        if (dispatchError != null) throw new Exception("UI dispatch failed.", dispatchError);
+    }
+    private static void CheckLayout(MainForm form, string output)
+    {
+        Field<TabControl>(form, "tabs").SelectedTab = Field<TabPage>(form, "blastPage"); Size normal = form.Size;
+        foreach (bool minimum in new[] { false, true })
         {
-            Set(form, "blastBusy", true);
-            Set(form, "blastElapsed", elapsed);
-            Set(form, "blastProgressText", "NCBI 正在计算，RID OFFLINE_FIXTURE");
-            Invoke(form, "UpdateBlastElapsed");
-            string initial = label.Text;
-            Check(initial.Contains("NCBI 正在计算") && initial.Contains("已用时 00:00"), "Running status shows stage and elapsed time.");
-            timer.Start();
-            Stopwatch deadline = Stopwatch.StartNew();
-            while (label.Text == initial && deadline.ElapsedMilliseconds < 2500)
+            form.Size = minimum ? form.MinimumSize : normal; Pump(form); var page = Field<TabPage>(form, "blastPage"); string state = minimum ? "minimum" : "default";
+            notes.Add(state + " form=" + form.Size + "; page=" + page.ClientRectangle);
+            for (int section = 0; section < 2; section++)
             {
-                Thread.Sleep(40);
-                Application.DoEvents();
-            }
-            Check(label.Text != initial && label.Text.Contains("已用时 00:"),
-                "Elapsed time advances during a simulated server wait without a progress event or network request.");
-        }
-        finally
-        {
-            timer.Stop(); elapsed.Stop();
-            Set(form, "blastBusy", false);
-            Set(form, "blastElapsed", null);
-            Set(form, "blastProgressText", null);
-            label.Text = previous;
-        }
-        AssertNoNetworkState(form, "Offline elapsed display");
-    }
-
-    private static void CheckOriginalWorker(MainForm form)
-    {
-        Field<CheckBox>(form, "blastEnabled").Checked = false;
-        Field<ComboBox>(form, "designMode").SelectedIndex = 0;
-        Field<TextBox>(form, "sequenceBox").Text = WithPrivateTitle(ReportWriter.ExampleFasta());
-        Field<NumericUpDown>(form, "pairCount").Value = 1;
-        typeof(MainForm).GetMethod("StartDesign", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(form, new object[] { null, EventArgs.Empty });
-        Stopwatch wait = Stopwatch.StartNew();
-        while (Field<bool>(form, "busy") && wait.ElapsedMilliseconds < 60000)
-        {
-            Application.DoEvents();
-            if (dispatchError != null) throw new Exception("UI dispatch failed.", dispatchError);
-            Thread.Sleep(15);
-        }
-        Check(!Field<bool>(form, "busy"), "Existing offline design worker completes while BLAST is off.");
-        if (Field<bool>(form, "busy")) throw new TimeoutException("Offline RPA worker exceeded 60 seconds.");
-        Pump(form);
-        DesignResult result = Field<DesignResult>(form, "result");
-        Check(result != null && result.Pairs.Count > 0, "Existing RPA design still produces a candidate with BLAST disabled.");
-        Invoke(form, "LoadBlastCandidate");
-        Check(Field<BlastQuerySet>(form, "blastQueries") != null && !Field<Button>(form, "blastRun").Enabled,
-            "A locally designed candidate can be previewed while online submission remains disabled.");
-        AssertPreviewPrivate(form, "Offline RPA worker");
-        AssertNoNetworkState(form, "Original design with online option off");
-    }
-
-    private static void CheckCandidatePreview(MainForm form, int mode)
-    {
-        PrepareFixture(form, mode);
-        Field<CheckBox>(form, "blastEnabled").Checked = false;
-        Invoke(form, "LoadBlastCandidate");
-        BlastQuerySet queries = Field<BlastQuerySet>(form, "blastQueries");
-        Check(queries != null && queries.Queries.Count > 0, "Mode " + mode + " loads selected candidate into query preview.");
-        Check(!Field<Button>(form, "blastRun").Enabled, "Mode " + mode + " cannot run with online option off.");
-        if (queries != null)
-        {
-            string preview = Field<TextBox>(form, "blastPreview").Text;
-            var sequences = FastaSequences(preview);
-            Check(sequences.Count == queries.Queries.Count, "Mode " + mode + " preview contains exactly the prepared query records.");
-            foreach (BlastQuery query in queries.Queries)
-            {
-                Check(preview.Contains(">" + query.Id) && sequences.Contains(query.Sequence), "Mode " + mode + " preview contains query " + query.Id + ".");
-                foreach (char c in query.Sequence) Check("ACGT".IndexOf(c) >= 0, "Mode " + mode + " submits only DNA-equivalent query bases.");
-            }
-            if (mode >= 2)
-            {
-                LampPrimerSet set = Field<LampDesignResult>(form, "lampResult").Sets[0];
-                Check(!sequences.Contains(set.FIP.Sequence) && !sequences.Contains(set.BIP.Sequence), "Mode " + mode + " splits full inner primers into binding regions.");
-                Check(sequences.Contains(set.FIP.Regions[0].Sequence) && sequences.Contains(set.FIP.Regions[1].Sequence), "Mode " + mode + " preview includes both FIP binding regions.");
-                if (mode == 4) Check(sequences.Contains(set.BIP.ActivatedRegions[1].Sequence) && !preview.Contains("[C3]") && !preview.Contains("[r"),
-                    "PA-LAMP checks the active B2 binding region without literal RNA/C3 order notation.");
+                Field<TabControl>(form, "blastGuideTabs").SelectedIndex = section; Pump(form); CheckTree(page, "BLAST/" + state + "/" + section);
+                if (section == 0) Check(Field<TextBox>(form, "blastReport").Height >= form.Font.Height * 3, state + " leaves at least three text lines for the result.");
+                else Check(form.Controls.Find("blastWebHelp", true).Single().Height >= form.Font.Height * 10, state + " provides a readable scrolling parameter guide.");
+                using (var bitmap = new Bitmap(form.Width, form.Height)) { form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size)); bitmap.Save(Path.Combine(output, "blast-" + (section == 0 ? "manual-" : "settings-") + state + ".png"), ImageFormat.Png); }
             }
         }
-        AssertPreviewPrivate(form, "Mode " + mode);
-        Field<CheckBox>(form, "blastEnabled").Checked = true;
-        Check(Field<Button>(form, "blastRun").Enabled && !Field<Button>(form, "blastCancel").Enabled,
-            "Mode " + mode + " enables explicit submission without starting a job.");
-        AssertNoNetworkState(form, "Toggle only, mode " + mode);
-        Field<CheckBox>(form, "blastEnabled").Checked = false;
-        Check(!Field<Button>(form, "blastRun").Enabled && Field<BlastQuerySet>(form, "blastQueries") == queries,
-            "Mode " + mode + " disabling online preserves preview but disables submission.");
-    }
-
-    private static void CheckInvalidation(MainForm form)
-    {
-        PrepareFixture(form, 1); SeedCompletedReport(form);
-        ComboBox mismatch = Field<ComboBox>(form, "mismatchMode");
-        mismatch.SelectedIndex = mismatch.SelectedIndex == 1 ? 2 : 1;
-        AssertCleared(form, "Changing SNP mismatch strategy");
-        PrepareFixture(form, 1); SeedCompletedReport(form);
-        TextBox input = Field<TextBox>(form, "sequenceBox");
-        string text = input.Text; int marker = text.IndexOf('['); char alternate = 'A';
-        foreach (char candidate in "ACGT")
-            if (candidate != text[marker + 1] && candidate != text[marker + 3]) { alternate = candidate; break; }
-        input.Text = text.Substring(0, marker + 3) + alternate + text.Substring(marker + 4);
-        AssertCleared(form, "Changing the annotated SNP alternate allele");
-        PrepareFixture(form, 5); SeedCompletedReport(form);
-        Field<TextBox>(form, "sequenceBox").Clear();
-        AssertCleared(form, "Clearing template input");
-        PrepareFixture(form, 2); SeedCompletedReport(form);
-        Field<ComboBox>(form, "designMode").SelectedIndex = 4;
-        AssertCleared(form, "Switching amplification mode");
-    }
-
-    private static void SeedCompletedReport(MainForm form)
-    {
-        Invoke(form, "LoadBlastCandidate");
-        Set(form, "blastCompletedQueries", Field<BlastQuerySet>(form, "blastQueries"));
-        Set(form, "blastCompletedSettings", Invoke(form, "ReadBlastSettings"));
-        Set(form, "blastResult", new BlastResult { Rid = "OFFLINE_FIXTURE", Database = "refseq_representative_genomes", RawXml = "<offline/>" });
-        Field<TextBox>(form, "blastReport").Text = "Offline simulated completed report; no network request.";
-        Invoke(form, "RefreshBlastControls");
-        Check(Field<Button>(form, "blastExport").Enabled, "A simulated completed result enables export availability without opening a dialog.");
-    }
-
-    private static void CheckUnsupportedQueries(MainForm form)
-    {
-        foreach (string sequence in new[] { "ACGTAC", new String('A', 1001) })
-        {
-            PrepareFixture(form, 0);
-            Field<DesignResult>(form, "result").Pairs[0].Forward.Sequence = sequence;
-            Field<CheckBox>(form, "blastEnabled").Checked = true;
-            Invoke(form, "LoadBlastCandidate"); Pump(form);
-            Check(Field<BlastQuerySet>(form, "blastQueries") == null && Field<TextBox>(form, "blastPreview").TextLength == 0
-                && !Field<Button>(form, "blastRun").Enabled,
-                "Unsupported query length " + sequence.Length + " cannot leave a partial prepared upload or enabled submission.");
-            string state = Field<Label>(form, "blastState").Text;
-            Check(state.Contains(sequence.Length < 7 ? "7 nt" : "1,000 nt"),
-                "Unsupported query length " + sequence.Length + " reports the explicit limit without a dialog: " + state);
-            AssertNoNetworkState(form, "Unsupported query length " + sequence.Length);
-        }
-        Field<CheckBox>(form, "blastEnabled").Checked = false;
-    }
-
-    private static void AssertCleared(MainForm form, string reason)
-    {
-        Check(Field<BlastQuerySet>(form, "blastQueries") == null && Field<BlastQuerySet>(form, "blastCompletedQueries") == null
-            && Field<BlastSettings>(form, "blastCompletedSettings") == null && Field<BlastResult>(form, "blastResult") == null,
-            reason + " invalidates prepared and completed BLAST data.");
-        Check(Field<TextBox>(form, "blastPreview").TextLength == 0 && Field<TextBox>(form, "blastReport").TextLength == 0
-            && !Field<Button>(form, "blastRun").Enabled && !Field<Button>(form, "blastExport").Enabled,
-            reason + " clears displayed queries/report and disables stale actions.");
     }
 
     private static void PrepareFixture(MainForm form, int mode)
@@ -336,31 +204,6 @@ internal static class BlastUiCheck
             }
         }
         return set;
-    }
-
-    private static void CheckLayout(MainForm form, string output)
-    {
-        Set(form, "result", null); Set(form, "snpResult", null); Set(form, "lampResult", null);
-        Field<DataGridView>(form, "grid").Rows.Clear(); Invoke(form, "ClearBlastResults");
-        TabPage page = Field<TabPage>(form, "blastPage"); Field<TabControl>(form, "tabs").SelectedTab = page;
-        Field<CheckBox>(form, "blastEnabled").Checked = true;
-        Size normal = form.Size;
-        foreach (bool minimum in new[] { false, true })
-        {
-            form.Size = minimum ? form.MinimumSize : normal; Pump(form);
-            string state = minimum ? "minimum" : "default";
-            notes.Add(state + " form=" + form.Size + "; page=" + page.ClientRectangle);
-            CheckTree(page, "BLAST/" + state);
-            Control options = Field<Control>(form, "blastOptions");
-            int measuredRows = 0;
-            foreach (Control row in options.Controls) measuredRows += row.GetPreferredSize(new Size(options.ClientSize.Width, 0)).Height;
-            Check(options.Height <= measuredRows + 4, state + " parameter panel is compact: height=" + options.Height + "; measured rows=" + measuredRows);
-            Check(Field<TextBox>(form, "blastReport").Height >= form.Font.Height * 3, state + " leaves at least three text lines for results.");
-            if (minimum)
-                using (var bitmap = new Bitmap(form.Width, form.Height))
-                { form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size)); bitmap.Save(Path.Combine(output, "blast-page-minimum.png"), ImageFormat.Png); }
-        }
-        Field<CheckBox>(form, "blastEnabled").Checked = false;
     }
 
     private static void CheckTree(Control parent, string path)
